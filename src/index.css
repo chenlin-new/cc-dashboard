@@ -1,0 +1,342 @@
+@import "tailwindcss";
+
+@theme {
+  --cc-border: rgba(148, 163, 184, 0.15);
+  --cc-accent: #38bdf8;
+  --cc-accent-secondary: #818cf8;
+  --color-border-subtle: rgba(148, 163, 184, 0.15);
+}
+
+/* ═══════════════════════════════════════════
+   Deep Space (default) – deep navy + sky
+   ═══════════════════════════════════════════ */
+[data-theme="deep-space"] {
+  --cc-accent: #38bdf8;
+  --cc-accent-secondary: #818cf8;
+  --color-sky-400: #38bdf8;
+  --color-sky-500: #0ea5e9;
+  --color-sky-600: #0284c7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-purple-400: #a78bfa;
+  --color-purple-500: #8b5cf6;
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-rose-400: #fb7185;
+  --color-amber-400: #fbbf24;
+  --color-slate-950: #020617;
+  --color-slate-900: #0b1120;
+  --color-slate-800: #141f33;
+  --color-slate-700: #1e2d45;
+  --color-slate-600: #2d3f5a;
+  --color-slate-500: #3d5275;
+  --color-slate-400: #64748b;
+  --color-slate-300: #94a3b8;
+  --color-slate-200: #cbd5e1;
+  --color-slate-100: #e2e8f0;
+  --color-slate-50: #f1f5f9;
+}
+
+/* ═══════════════════════════════════════════
+   Dracula – purple/cyan/pink, vivid
+   ═══════════════════════════════════════════ */
+[data-theme="dracula"] {
+  --cc-accent: #bd93f9;
+  --cc-accent-secondary: #ff79c6;
+  --color-sky-400: #bd93f9;
+  --color-sky-500: #a879e6;
+  --color-sky-600: #9460d4;
+  --color-emerald-400: #50fa7b;
+  --color-emerald-500: #3ce868;
+  --color-emerald-600: #2bd455;
+  --color-purple-400: #ff79c6;
+  --color-purple-500: #f55db0;
+  --color-indigo-400: #8be9fd;
+  --color-indigo-500: #62daf0;
+  --color-rose-400: #ff5555;
+  --color-amber-400: #f1fa8c;
+  --color-slate-950: #0d0a1a;
+  --color-slate-900: #1a1033;
+  --color-slate-800: #282a36;
+  --color-slate-700: #383a4a;
+  --color-slate-600: #4a4c5c;
+  --color-slate-500: #5c5e6e;
+  --color-slate-400: #727480;
+  --color-slate-300: #9698a0;
+  --color-slate-200: #c0c2c8;
+  --color-slate-100: #e0e0e8;
+  --color-slate-50: #f8f8f2;
+}
+
+/* ═══════════════════════════════════════════
+   Nord – frosty blue-gray, elegant
+   ═══════════════════════════════════════════ */
+[data-theme="nord"] {
+  --cc-accent: #88c0d0;
+  --cc-accent-secondary: #81a1c1;
+  --color-sky-400: #88c0d0;
+  --color-sky-500: #6db3c4;
+  --color-sky-600: #5a9fb0;
+  --color-emerald-400: #a3be8c;
+  --color-emerald-500: #8fbc73;
+  --color-emerald-600: #7aaa5e;
+  --color-purple-400: #b48ead;
+  --color-purple-500: #a47a9d;
+  --color-indigo-400: #81a1c1;
+  --color-indigo-500: #6d8eaf;
+  --color-rose-400: #bf616a;
+  --color-amber-400: #ebcb8b;
+  --color-slate-950: #1a2029;
+  --color-slate-900: #242933;
+  --color-slate-800: #2e3440;
+  --color-slate-700: #3b4252;
+  --color-slate-600: #434c5e;
+  --color-slate-500: #4c566a;
+  --color-slate-400: #69768a;
+  --color-slate-300: #8a97aa;
+  --color-slate-200: #b0bcc8;
+  --color-slate-100: #d8dee9;
+  --color-slate-50: #e5e9f0;
+}
+
+/* ═══════════════════════════════════════════
+   One Dark – Atom-inspired, muted warm
+   ═══════════════════════════════════════════ */
+[data-theme="one-dark"] {
+  --cc-accent: #61afef;
+  --cc-accent-secondary: #c678dd;
+  --color-sky-400: #61afef;
+  --color-sky-500: #4da0e0;
+  --color-sky-600: #3b8fd0;
+  --color-emerald-400: #98c379;
+  --color-emerald-500: #84b366;
+  --color-emerald-600: #719e55;
+  --color-purple-400: #c678dd;
+  --color-purple-500: #b565cf;
+  --color-indigo-400: #56b6c2;
+  --color-indigo-500: #44a0ac;
+  --color-rose-400: #e06c75;
+  --color-amber-400: #e5c07b;
+  --color-slate-950: #14171f;
+  --color-slate-900: #1e222a;
+  --color-slate-800: #282c34;
+  --color-slate-700: #353b45;
+  --color-slate-600: #434a54;
+  --color-slate-500: #515963;
+  --color-slate-400: #6b7382;
+  --color-slate-300: #8b929e;
+  --color-slate-200: #abb2bf;
+  --color-slate-100: #c8ccd4;
+  --color-slate-50: #e6e8ec;
+}
+
+/* ═══════════════════════════════════════════
+   Monokai – vibrant green/pink, classic
+   ═══════════════════════════════════════════ */
+[data-theme="monokai"] {
+  --cc-accent: #a6e22e;
+  --cc-accent-secondary: #f92672;
+  --color-sky-400: #a6e22e;
+  --color-sky-500: #92cc26;
+  --color-sky-600: #7fb620;
+  --color-emerald-400: #a6e22e;
+  --color-emerald-500: #92cc26;
+  --color-emerald-600: #7fb620;
+  --color-purple-400: #ae81ff;
+  --color-purple-500: #9b5eff;
+  --color-indigo-400: #66d9ef;
+  --color-indigo-500: #44cfe0;
+  --color-rose-400: #f92672;
+  --color-amber-400: #fd971f;
+  --color-slate-950: #151613;
+  --color-slate-900: #1e1f1c;
+  --color-slate-800: #272822;
+  --color-slate-700: #363730;
+  --color-slate-600: #464740;
+  --color-slate-500: #565750;
+  --color-slate-400: #757670;
+  --color-slate-300: #949590;
+  --color-slate-200: #b3b4b0;
+  --color-slate-100: #d2d3d0;
+  --color-slate-50: #f8f8f2;
+}
+
+/* ═══════════════════════════════════════════
+   Tokyo Night – deep navy, blue/magenta accents
+   ═══════════════════════════════════════════ */
+[data-theme="tokyo-night"] {
+  --cc-accent: #7aa2f7;
+  --cc-accent-secondary: #bb9af7;
+  --color-sky-400: #7aa2f7;
+  --color-sky-500: #5d8ceb;
+  --color-sky-600: #4a78d7;
+  --color-emerald-400: #9ece6a;
+  --color-emerald-500: #85b857;
+  --color-emerald-600: #72a245;
+  --color-purple-400: #bb9af7;
+  --color-purple-500: #a885e6;
+  --color-indigo-400: #7dcfff;
+  --color-indigo-500: #5ab8f0;
+  --color-rose-400: #f7768e;
+  --color-amber-400: #e0af68;
+  --color-slate-950: #0f111a;
+  --color-slate-900: #1a1b26;
+  --color-slate-800: #24283b;
+  --color-slate-700: #313452;
+  --color-slate-600: #3e4164;
+  --color-slate-500: #4c5076;
+  --color-slate-400: #6a6e8a;
+  --color-slate-300: #8a8ea6;
+  --color-slate-200: #a9b1d6;
+  --color-slate-100: #c0caf5;
+  --color-slate-50: #d5d9f0;
+}
+
+/* ═══════════════════════════════════════════
+   Solarized Dark – warm retro, low contrast
+   ═══════════════════════════════════════════ */
+[data-theme="solarized"] {
+  --cc-accent: #2aa198;
+  --cc-accent-secondary: #268bd2;
+  --color-sky-400: #2aa198;
+  --color-sky-500: #238c84;
+  --color-sky-600: #1c7770;
+  --color-emerald-400: #859900;
+  --color-emerald-500: #738700;
+  --color-emerald-600: #617500;
+  --color-purple-400: #6c71c4;
+  --color-purple-500: #5a5fb3;
+  --color-indigo-400: #268bd2;
+  --color-indigo-500: #2075b8;
+  --color-rose-400: #dc322f;
+  --color-amber-400: #b58900;
+  --color-slate-950: #00141a;
+  --color-slate-900: #002b36;
+  --color-slate-800: #073642;
+  --color-slate-700: #124652;
+  --color-slate-600: #1d5662;
+  --color-slate-500: #2a6672;
+  --color-slate-400: #507883;
+  --color-slate-300: #758a94;
+  --color-slate-200: #93a1a1;
+  --color-slate-100: #bdc7c7;
+  --color-slate-50: #eee8d5;
+}
+
+/* ═══════════════════════════════════════════
+   Light+ – VS Code style light, clean
+   ═══════════════════════════════════════════ */
+[data-theme="light-plus"] {
+  --cc-accent: #007acc;
+  --cc-accent-secondary: #6c3ec6;
+  --color-sky-400: #007acc;
+  --color-sky-500: #0068b0;
+  --color-sky-600: #005698;
+  --color-emerald-400: #008040;
+  --color-emerald-500: #006e36;
+  --color-emerald-600: #005c2c;
+  --color-purple-400: #6c3ec6;
+  --color-purple-500: #5a32b0;
+  --color-purple-600: #4a2896;
+  --color-indigo-400: #0066b8;
+  --color-indigo-500: #005598;
+  --color-rose-400: #d12c3a;
+  --color-amber-400: #d87a00;
+  --color-slate-50: #0f172a;
+  --color-slate-100: #1e293b;
+  --color-slate-200: #334155;
+  --color-slate-300: #475569;
+  --color-slate-400: #64748b;
+  --color-slate-500: #94a3b8;
+  --color-slate-600: #cbd5e1;
+  --color-slate-700: #e2e8f0;
+  --color-slate-800: #f1f5f9;
+  --color-slate-900: #f8fafc;
+  --color-slate-950: #ffffff;
+}
+
+/* ═══════════════════════════════════════════
+   Base styles
+   ═══════════════════════════════════════════ */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Glass & card effects – use theme tokens */
+.glass {
+  background: color-mix(in srgb, var(--color-slate-950) 60%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.glass-card {
+  background: color-mix(in srgb, var(--color-slate-900) 50%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.glass-card:hover {
+  background: color-mix(in srgb, var(--color-slate-900) 70%, transparent);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--cc-accent) 0%, var(--cc-accent-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Smooth theme transitions */
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.2s ease;
+}
+
+/* ═══════════════════════════════════════════
+   Markdown content
+   ═══════════════════════════════════════════ */
+.markdown-body h1 { font-size: 1.5rem; font-weight: 700; margin: 1.5rem 0 0.75rem; color: var(--color-slate-100); }
+.markdown-body h2 { font-size: 1.25rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: var(--color-slate-200); }
+.markdown-body h3 { font-size: 1.1rem; font-weight: 600; margin: 1rem 0 0.5rem; color: var(--color-slate-200); }
+.markdown-body p { margin: 0.5rem 0; line-height: 1.7; color: var(--color-slate-300); }
+.markdown-body ul, .markdown-body ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+.markdown-body li { margin: 0.25rem 0; color: var(--color-slate-300); }
+.markdown-body code {
+  background: rgba(148, 163, 184, 0.1);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: var(--cc-accent);
+}
+.markdown-body pre {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  border: 1px solid var(--color-border-subtle);
+}
+.markdown-body pre code { background: none; padding: 0; color: var(--color-slate-200); }
+.markdown-body blockquote {
+  border-left: 3px solid var(--cc-accent);
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: var(--color-slate-400);
+}
+.markdown-body strong { color: var(--color-slate-100); }
+.markdown-body a { color: var(--cc-accent); text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
