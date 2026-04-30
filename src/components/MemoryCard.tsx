@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Brain, FileText } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import type { MemoryItem } from '../types'
 
 const typeColors: Record<string, string> = {
@@ -17,7 +18,7 @@ const typeLabels: Record<string, string> = {
   unknown: '未分类',
 }
 
-export default function MemoryCard({ memory }: { memory: MemoryItem }) {
+export default function MemoryCard({ memory, onDelete }: { memory: MemoryItem; onDelete?: () => void }) {
   const preview = memory.content
     .replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, '')
     .replace(/[#*`>\[\]]/g, '')
@@ -58,9 +59,20 @@ export default function MemoryCard({ memory }: { memory: MemoryItem }) {
             {preview}...
           </p>
         )}
-        <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-600">
-          <FileText className="h-3 w-3" />
-          <span className="truncate">{memory.filename}</span>
+        <div className="mt-3 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <FileText className="h-3 w-3" />
+            <span className="truncate">{memory.filename}</span>
+          </div>
+          {onDelete && (
+            <button
+              onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete() }}
+              className="rounded p-1 text-slate-600 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all"
+              title="删除"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
     </Link>

@@ -11,6 +11,7 @@ export const messages: Record<string, Record<string, string>> = {
     'nav.chat': '聊天',
     'nav.sessions': '会话',
     'nav.settings': '配置',
+    'nav.projects': '项目',
     // Common
     'common.loading': '加载中...',
     'common.noData': '暂无数据',
@@ -25,6 +26,8 @@ export const messages: Record<string, Record<string, string>> = {
     'common.refresh': '刷新',
     'common.all': '全部',
     'common.back': '返回',
+    'project.chat': '项目聊天',
+    'project.noProjects': '暂无项目',
     // Status
     'status.in_progress': '进行中',
     'status.completed': '已完成',
@@ -147,6 +150,7 @@ export const messages: Record<string, Record<string, string>> = {
     'nav.chat': 'Chat',
     'nav.sessions': 'Sessions',
     'nav.settings': 'Settings',
+    'nav.projects': 'Projects',
     'common.loading': 'Loading...',
     'common.noData': 'No data',
     'common.total': '{count} total',
@@ -160,6 +164,8 @@ export const messages: Record<string, Record<string, string>> = {
     'common.refresh': 'Refresh',
     'common.all': 'All',
     'common.back': 'Back',
+    'project.chat': 'Project Chat',
+    'project.noProjects': 'No projects',
     'status.in_progress': 'Running',
     'status.completed': 'Done',
     'status.pending': 'Pending',

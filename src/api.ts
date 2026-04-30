@@ -1,4 +1,4 @@
-import type { MemoryItem, TaskItem, TaskDetail, SkillItem, Settings, Stats, McpConfig, PluginInfo, AgentInfo, MarketplaceItem } from './types'
+import type { MemoryItem, TaskItem, TaskDetail, SkillItem, Settings, Stats, McpConfig, PluginInfo, AgentInfo, MarketplaceItem, ProjectInfo } from './types'
 
 const BASE = '/api'
 
@@ -6,6 +6,11 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
+}
+
+// ── Projects ──
+export function fetchProjects(): Promise<ProjectInfo[]> {
+  return fetchJson(`${BASE}/projects`)
 }
 
 // ── Stats ──
@@ -112,6 +117,18 @@ export function saveMemory(project: string, filename: string, content: string): 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
   })
+}
+
+export function createMemory(data: { project: string; filename: string; name: string; description: string; type: string; content: string }): Promise<any> {
+  return fetchJson(`${BASE}/memory`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export function deleteMemory(project: string, filename: string): Promise<any> {
+  return fetchJson(`${BASE}/memory/${encodeURIComponent(project)}/${encodeURIComponent(filename)}`, { method: 'DELETE' })
 }
 
 export function saveMcpConfig(path: string, mcpServers: Record<string, any>): Promise<any> {
@@ -235,6 +252,52 @@ export function sendChatMessage(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, history }),
+        signal: ctrl.signal,
+      })
+      const reader = res.body?.getReader()
+      if (!reader) { onError('No response body'); return }
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let fullText = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const parsed = JSON.parse(line.slice(6))
+              if (parsed.token) { fullText += parsed.token; onToken(parsed.token) }
+              if (parsed.error) onError(parsed.error)
+              if (parsed.done) { onDone(fullText); return }
+            } catch {}
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') onError(String(e.message))
+    }
+  })()
+  return ctrl
+}
+
+// ── Chat: Claude Code native mode ──
+export function sendCcMessage(
+  message: string,
+  project: string | null,
+  onToken: (text: string) => void,
+  onDone: (fullText: string) => void,
+  onError: (err: string) => void,
+): AbortController {
+  const ctrl = new AbortController()
+  ;(async () => {
+    try {
+      const res = await fetch(`${BASE}/chat/cc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, project }),
         signal: ctrl.signal,
       })
       const reader = res.body?.getReader()

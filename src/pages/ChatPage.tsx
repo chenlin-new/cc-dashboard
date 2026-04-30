@@ -2,11 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   MessageSquare, Terminal, Send, Sparkles, Trash2, User, Bot, StopCircle,
   Plus, X, Columns2, History, Clock, FileText, PanelRightOpen, PanelRightClose,
-  Copy, Check, Pencil, Download, BookTemplate, Save, Star,
+  Copy, Check, Pencil, Download, BookTemplate, Save, Star, Cpu,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { sendChatMessage, saveChatSession, fetchChatSessions, loadChatSession, deleteChatSession, patchChatSession } from '../api'
+import { sendChatMessage, sendCcMessage, saveChatSession, fetchChatSessions, loadChatSession, deleteChatSession, patchChatSession } from '../api'
 import type { ChatMessage, ChatTabState, ChatPaneState } from '../types'
 
 let nextPaneId = 1
@@ -42,7 +42,7 @@ function ChatPane({ pane, tabId, paneIndex, totalPanes, onUpdatePane, onSplitCha
   templateTarget?: string | null
 }) {
   const [input, setInput] = useState('')
-  const [mode, setMode] = useState<'chat' | 'terminal'>('chat')
+  const [mode, setMode] = useState<'chat' | 'terminal' | 'cc'>('chat')
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
@@ -61,12 +61,27 @@ function ChatPane({ pane, tabId, paneIndex, totalPanes, onUpdatePane, onSplitCha
     if (!text || pane.sending) return
     setInput('')
     const currentHistory = pane.messages
+
+    // ── CC Native mode ──
+    if (mode === 'cc') {
+      const userMsg: ChatMessage = { role: 'user', content: text, timestamp: Date.now() }
+      const placeholder: ChatMessage = { role: 'assistant', content: '', timestamp: Date.now() }
+      upd(p => ({ ...p, messages: [...currentHistory, userMsg, placeholder], sending: true, streamingId: Date.now(), abortCtrl: null }))
+      const ctrl = sendCcMessage(
+        text, null,
+        (token) => upd(p => { const n = [...p.messages]; const l = n[n.length - 1]; if (l.role === 'assistant') n[n.length - 1] = { ...l, content: l.content + token }; return { ...p, messages: n } }),
+        () => { upd(p => ({ ...p, sending: false, streamingId: null, abortCtrl: null })); onPaneMsgChange?.() },
+        (err) => upd(p => { const n = [...p.messages]; const l = n[n.length - 1]; if (l.role === 'assistant') n[n.length - 1] = { ...l, content: l.content + (l.content ? '\n\n' : '') + '```\n错误: ' + err + '\n```' }; return { ...p, messages: n, sending: false, streamingId: null, abortCtrl: null } }),
+      )
+      upd(p => ({ ...p, abortCtrl: ctrl }))
+      return
+    }
+
+    // ── API mode ──
     if (editIdx !== null) {
-      // Edit mode: replace the user message and truncate after it
       const beforeEdit = currentHistory.slice(0, editIdx)
       const userMsg: ChatMessage = { role: 'user', content: text, timestamp: Date.now() }
       upd(p => ({ ...p, messages: [...beforeEdit, userMsg], sending: false }))
-      // Re-send with the truncated history (exclude the last assistant response)
       const historyForApi = beforeEdit.map(m => ({ role: m.role, content: m.content }))
       const placeholder: ChatMessage = { role: 'assistant', content: '', timestamp: Date.now() }
       upd(p => ({ ...p, messages: [...beforeEdit, userMsg, placeholder], sending: true, streamingId: Date.now(), abortCtrl: null }))
@@ -89,7 +104,7 @@ function ChatPane({ pane, tabId, paneIndex, totalPanes, onUpdatePane, onSplitCha
       (err) => upd(p => { const n = [...p.messages]; const l = n[n.length - 1]; if (l.role === 'assistant') n[n.length - 1] = { ...l, content: l.content + (l.content ? '\n\n' : '') + '```\n错误: ' + err + '\n```' }; return { ...p, messages: n, sending: false, streamingId: null, abortCtrl: null } }),
     )
     upd(p => ({ ...p, abortCtrl: ctrl }))
-  }, [input, pane.sending, pane.messages, upd, onPaneMsgChange, editIdx])
+  }, [input, pane.sending, pane.messages, mode, upd, onPaneMsgChange, editIdx])
 
   const handleStop = useCallback(() => { pane.abortCtrl?.abort(); upd(p => ({ ...p, sending: false, streamingId: null, abortCtrl: null })) }, [pane.abortCtrl, upd])
 
@@ -114,8 +129,9 @@ function ChatPane({ pane, tabId, paneIndex, totalPanes, onUpdatePane, onSplitCha
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-slate-500 font-mono">#{paneIndex + 1}</span>
           <div className="flex items-center gap-0.5 rounded bg-slate-800/40 p-0.5">
-            <button onClick={() => setMode('chat')} className={`rounded p-0.5 transition-all ${mode === 'chat' ? 'bg-slate-700/60 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}><MessageSquare className="h-3 w-3" /></button>
-            <button onClick={() => setMode('terminal')} className={`rounded p-0.5 transition-all ${mode === 'terminal' ? 'bg-slate-700/60 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}><Terminal className="h-3 w-3" /></button>
+            <button onClick={() => setMode('chat')} className={`rounded p-0.5 transition-all ${mode === 'chat' ? 'bg-slate-700/60 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`} title="API 模式"><MessageSquare className="h-3 w-3" /></button>
+            <button onClick={() => setMode('cc')} className={`rounded p-0.5 transition-all ${mode === 'cc' ? 'bg-slate-700/60 text-amber-400' : 'text-slate-500 hover:text-slate-300'}`} title="Claude Code 原生"><Cpu className="h-3 w-3" /></button>
+            <button onClick={() => setMode('terminal')} className={`rounded p-0.5 transition-all ${mode === 'terminal' ? 'bg-slate-700/60 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`} title="终端"><Terminal className="h-3 w-3" /></button>
           </div>
         </div>
         <div className="flex items-center gap-1">

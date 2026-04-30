@@ -10,6 +10,7 @@ import PluginsPage from './pages/PluginsPage'
 import AgentsPage from './pages/AgentsPage'
 import SessionsPage from './pages/SessionsPage'
 import ChatPage from './pages/ChatPage'
+import ProjectPage from './pages/ProjectPage'
 import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/sessions" element={<SessionsPage />} />
         <Route path="/chat" element={<ChatPage />} />
+        <Route path="/project/:projectName" element={<ProjectPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </Layout>

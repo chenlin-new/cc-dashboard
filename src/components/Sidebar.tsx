@@ -1,5 +1,5 @@
-import { NavLink } from 'react-router-dom'
-import { useState } from 'react'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   Brain,
@@ -13,11 +13,16 @@ import {
   Palette,
   Languages,
   ChevronUp,
+  ChevronRight,
   Clock,
   MessageSquare,
+  FolderHeart,
+  FolderGit2,
 } from 'lucide-react'
 import { useLocale } from '../contexts/LocaleContext'
 import { useTheme, themeOptions } from '../contexts/ThemeContext'
+import { fetchProjects } from '../api'
+import type { ProjectInfo } from '../types'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'nav.dashboard' },
@@ -36,11 +41,38 @@ export default function Sidebar() {
   const { locale, setLocale, t } = useLocale()
   const { theme, setTheme } = useTheme()
   const [showThemePicker, setShowThemePicker] = useState(false)
+  const [projects, setProjects] = useState<ProjectInfo[]>([])
+  const [showProjects, setShowProjects] = useState(true)
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+  const navigate = useNavigate()
+  const location = useLocation()
+  const activeProject = location.pathname.startsWith('/project/')
+    ? decodeURIComponent(location.pathname.split('/project/')[1])
+    : null
+
+  useEffect(() => {
+    fetchProjects().then(setProjects).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (activeProject) {
+      setExpandedProjects(prev => new Set([...prev, activeProject]))
+    }
+  }, [activeProject])
+
+  const toggleProject = (encodedName: string) => {
+    setExpandedProjects(prev => {
+      const next = new Set(prev)
+      if (next.has(encodedName)) next.delete(encodedName)
+      else next.add(encodedName)
+      return next
+    })
+  }
 
   return (
     <aside className="flex w-60 flex-col border-r border-slate-800/50 bg-slate-900/30 backdrop-blur-2xl">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-6 pt-8 pb-6">
+      <div className="flex items-center gap-3 px-6 pt-8 pb-4">
         <div
           className="flex h-9 w-9 items-center justify-center rounded-lg shadow-lg"
           style={{
@@ -58,8 +90,73 @@ export default function Sidebar() {
         </div>
       </div>
 
+      {/* Projects Section */}
+      <div className="border-b border-slate-800/30 pb-2">
+        <button
+          onClick={() => setShowProjects(!showProjects)}
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          {showProjects ? <ChevronUp className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          <FolderHeart className="h-3.5 w-3.5" />
+          <span className="flex-1 text-left">{t('nav.projects')}</span>
+          <span className="text-[10px] text-slate-600 tabular-nums">{projects.length}</span>
+        </button>
+        {showProjects && (
+          <div className="mt-1 space-y-0.5 px-2 max-h-[300px] overflow-y-auto">
+            {projects.length === 0 ? (
+              <p className="px-2 py-2 text-[11px] text-slate-600">{t('project.noProjects')}</p>
+            ) : (
+              projects.map(proj => {
+                const isExpanded = expandedProjects.has(proj.encodedName)
+                return (
+                  <div key={proj.encodedName}>
+                    <div
+                      className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer transition-all hover:bg-slate-800/30 group ${
+                        activeProject === proj.encodedName ? 'bg-sky-500/10 ring-1 ring-sky-500/20' : ''
+                      }`}
+                      onClick={() => toggleProject(proj.encodedName)}
+                    >
+                      <FolderGit2 className={`h-3.5 w-3.5 shrink-0 ${activeProject === proj.encodedName ? 'text-sky-400' : 'text-sky-500/70'}`} />
+                      <span className={`flex-1 text-xs truncate ${activeProject === proj.encodedName ? 'text-sky-400 font-medium' : 'text-slate-300'}`} title={proj.name}>
+                        {proj.name}
+                      </span>
+                      <ChevronRight className={`h-3 w-3 text-slate-600 transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
+                    </div>
+                    {isExpanded && (
+                      <div className="ml-4 mt-0.5 space-y-0.5 border-l border-slate-800/40 pl-3">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/project/${encodeURIComponent(proj.encodedName)}`) }}
+                          className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-[11px] text-slate-400 hover:text-sky-400 hover:bg-slate-800/30 transition-all"
+                        >
+                          <MessageSquare className="h-3 w-3" />
+                          {t('project.chat')}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/memory?project=${encodeURIComponent(proj.encodedName)}`) }}
+                          className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-[11px] text-slate-400 hover:text-purple-400 hover:bg-slate-800/30 transition-all"
+                        >
+                          <Brain className="h-3 w-3" />
+                          {t('nav.memory')}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/skills?project=${encodeURIComponent(proj.encodedName)}`) }}
+                          className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-[11px] text-slate-400 hover:text-purple-400 hover:bg-slate-800/30 transition-all"
+                        >
+                          <Wrench className="h-3 w-3" />
+                          {t('nav.skills')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="flex-1 space-y-1 px-3 overflow-y-auto py-2">
         {navItems.map((item) => (
           <NavLink
             key={item.to}

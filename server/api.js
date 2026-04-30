@@ -37,6 +37,16 @@ function writeJsonSafe(filepath, data) {
   fs.writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8')
 }
 
+// macOS/Linux: -Users-lin-Desktop → /Users/lin/Desktop
+// Windows: C--Users-lin-Desktop → C:/Users/lin/Desktop
+function decodeProjectPath(name) {
+  const decoded = name.replace(/-/g, '/')
+  if (IS_WIN) {
+    return decoded.replace(/^(\w)\//, '$1:/')
+  }
+  return '/' + decoded.replace(/^-/, '')
+}
+
 function parseFrontmatter(content) {
   const meta = {}
   const match = content.match(/^---\s*\n([\s\S]*?)\n---/)
@@ -153,18 +163,6 @@ function deleteTask(id) {
 
 function walkSkills() {
   const results = []
-
-  // Helper: convert path-encoded directory name to actual filesystem path
-  // macOS/Linux: -Users-lin-Desktop → /Users/lin/Desktop
-  // Windows: C--Users-lin-Desktop → C:/Users/lin/Desktop
-  function decodeProjectPath(name) {
-    const decoded = name.replace(/-/g, '/')
-    if (IS_WIN) {
-      // Windows drive letter: C--Users → C:/Users
-      return decoded.replace(/^(\w)\//, '$1:/')
-    }
-    return '/' + decoded.replace(/^-/, '')
-  }
 
   // 1) Global skills: ~/.claude/skills/*.md
   if (fs.existsSync(SKILLS_DIR)) {
@@ -286,12 +284,6 @@ function saveSkill(filename, content) {
 
 function findMcpConfigs() {
   const results = []
-
-  // Helper: convert path-encoded directory name to actual filesystem path
-  // e.g. "-Users-lin-Desktop-work-pms" -> "/Users/lin/Desktop/work/pms"
-  function decodeProjectPath(name) {
-    return '/' + name.replace(/^-/, '').replace(/-/g, '/')
-  }
 
   // Check project directories in ~/.claude/projects/
   if (fs.existsSync(PROJECTS_DIR)) {
@@ -528,17 +520,73 @@ function getChartStats() {
 }
 
 // ─── Local Context Builder (skills + plugins for chat) ──
-function buildLocalContext() {
+function buildLocalContext(projectName) {
   const parts = []
-  // Skills
-  const skills = walkSkills()
-  if (skills.length > 0) {
-    parts.push('## 可用的技能 (Skills)\n\n你拥有以下自定义技能文件，用户可以通过 `/技能名` 调用它们：')
-    for (const s of skills) {
-      parts.push(`- **${s.name}**${s.description ? `: ${s.description}` : ''}${s.tags.length ? ` \`${s.tags.join('`, `')}\`` : ''}`)
+  const allSkills = walkSkills()
+
+  // If a project is selected, highlight its skills first
+  if (projectName) {
+    const projectSkills = allSkills.filter(s => s.source === 'project' && s.project === projectName)
+    const globalSkills = allSkills.filter(s => s.source === 'claude-global')
+
+    const projectPath = decodeProjectPath(projectName)
+    const projectDir = path.join(projectPath, '.claude')
+
+    parts.push(`## 当前项目: ${path.basename(projectPath)}`)
+    parts.push(`\n项目路径: \`${projectPath}\``)
+
+    // Project skills
+    if (projectSkills.length > 0) {
+      parts.push('\n### 📁 项目技能（可直接调用）')
+      for (const s of projectSkills) {
+        parts.push(`- **/${s.name}**${s.description ? `: ${s.description}` : ''}`)
+        if (s.content) {
+          // Include skill content so the AI can use it
+          const brief = s.content
+            .replace(/^---[\s\S]*?---\n?/, '') // remove frontmatter
+            .slice(0, 1500) // limit size
+          parts.push(`  \`\`\`markdown\n${brief}\n\`\`\``)
+        }
+      }
+    } else {
+      parts.push('\n> 此项目暂无自定义技能')
+    }
+
+    // Project memories
+    try {
+      const memDir = path.join(PROJECTS_DIR, projectName, 'memory')
+      if (fs.existsSync(memDir)) {
+        const memFiles = fs.readdirSync(memDir).filter(f => f.endsWith('.md'))
+        if (memFiles.length > 0) {
+          parts.push('\n### 🧠 项目记忆')
+          for (const f of memFiles) {
+            const content = fs.readFileSync(path.join(memDir, f), 'utf-8')
+            const meta = parseFrontmatter(content)
+            parts.push(`- **${meta.name || f.replace('.md', '')}** (${meta.type || 'unknown'})${meta.description ? `: ${meta.description}` : ''}`)
+          }
+        }
+      }
+    } catch {}
+
+    // Global skills summary
+    if (globalSkills.length > 0) {
+      parts.push(`\n### 🌐 全局技能（也可使用）`)
+      for (const s of globalSkills) {
+        parts.push(`- **/${s.name}**${s.description ? `: ${s.description}` : ''}`)
+      }
+    }
+  } else {
+    // No project selected: show all skills
+    if (allSkills.length > 0) {
+      parts.push('## 可用的技能 (Skills)\n\n你拥有以下自定义技能文件，用户可以通过 `/技能名` 调用它们：')
+      for (const s of allSkills) {
+        const loc = s.source === 'project' ? ` [项目: ${s.project}]` : ''
+        parts.push(`- **${s.name}**${loc}${s.description ? `: ${s.description}` : ''}${s.tags.length ? ` \`${s.tags.join('`, `')}\`` : ''}`)
+      }
     }
   }
-  // Plugins
+
+  // Plugins (always included)
   try {
     const pluginFile = path.join(PLUGINS_DIR, 'installed_plugins.json')
     if (fs.existsSync(pluginFile)) {
@@ -551,19 +599,25 @@ function buildLocalContext() {
       }
     }
   } catch {}
-  // Projects summary
-  try {
-    const projects = fs.readdirSync(PROJECTS_DIR).filter(p => {
-      const s = fs.statSync(path.join(PROJECTS_DIR, p))
-      return s.isDirectory() && fs.existsSync(path.join(PROJECTS_DIR, p, 'memory'))
-    })
-    if (projects.length > 0) {
-      parts.push('\n## 项目\n\n你有以下 Claude Code 项目目录：\n' + projects.map(p => `- \`${p}\``).join('\n'))
-    }
-  } catch {}
+
+  // Projects summary (only when no project selected)
+  if (!projectName) {
+    try {
+      const projects = fs.readdirSync(PROJECTS_DIR).filter(p => {
+        const s = fs.statSync(path.join(PROJECTS_DIR, p))
+        return s.isDirectory() && fs.existsSync(path.join(PROJECTS_DIR, p, 'memory'))
+      })
+      if (projects.length > 0) {
+        parts.push('\n## 项目\n\n你有以下 Claude Code 项目目录：\n' + projects.map(p => `- \`${p}\``).join('\n'))
+      }
+    } catch {}
+  }
 
   if (parts.length === 0) return ''
-  return '你是 Claude Code，运行在用户的本地 Dashboard 中。以下是你的本地环境和可用资源：\n\n' + parts.join('\n')
+  const prefix = projectName
+    ? `你是 Claude Code，用户当前在项目「${path.basename(decodeProjectPath(projectName))}」中工作。以下是该项目的本地环境和可用资源：\n\n`
+    : '你是 Claude Code，运行在用户的本地 Dashboard 中。以下是你的本地环境和可用资源：\n\n'
+  return prefix + parts.join('\n')
 }
 
 // ─── Unified Router ────────────────────────────
@@ -603,6 +657,49 @@ export async function handleApi(req, res) {
         res.statusCode = 404; res.end(JSON.stringify({ error: 'Not found' })); return
       }
       res.end(JSON.stringify({ project, filename, content: fs.readFileSync(filepath, 'utf-8') }))
+      return
+    }
+    // POST /api/memory — create new memory
+    if (pathname === '/memory' && req.method === 'POST') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          const { project, filename, name, description, type, content } = JSON.parse(body)
+          if (!project || !filename) {
+            res.statusCode = 400; res.end(JSON.stringify({ error: 'project and filename required' })); return
+          }
+          const safeName = filename.endsWith('.md') ? filename : filename + '.md'
+          const memDir = path.join(PROJECTS_DIR, project, 'memory')
+          if (!fs.existsSync(memDir)) fs.mkdirSync(memDir, { recursive: true })
+          const filepath = path.join(memDir, safeName)
+          // Build frontmatter
+          const frontmatter = [
+            '---',
+            `name: ${name || filename}`,
+            `description: ${description || ''}`,
+            `type: ${type || 'user'}`,
+            '---',
+            '',
+            content || '',
+          ].join('\n')
+          fs.writeFileSync(filepath, frontmatter, 'utf-8')
+          res.end(JSON.stringify({ created: true, path: filepath }))
+        } catch (e) {
+          res.statusCode = 500; res.end(JSON.stringify({ error: String(e) }))
+        }
+      })
+      return
+    }
+    // DELETE /api/memory/:project/:filename
+    if (segs[0] === 'memory' && segs.length === 3 && req.method === 'DELETE') {
+      const [, project, filename] = segs
+      const filepath = path.join(PROJECTS_DIR, project, 'memory', filename)
+      if (!fs.existsSync(filepath)) {
+        res.statusCode = 404; res.end(JSON.stringify({ error: 'Not found' })); return
+      }
+      fs.unlinkSync(filepath)
+      res.end(JSON.stringify({ deleted: true }))
       return
     }
     if (segs[0] === 'memory' && segs.length === 3 && req.method === 'PUT') {
@@ -1035,7 +1132,123 @@ export async function handleApi(req, res) {
       return
     }
 
-    // ── Chat (streaming via NDJSON) ──
+    // ── Projects ──
+    if (pathname === '/projects' && req.method === 'GET') {
+      const projects = []
+      if (fs.existsSync(PROJECTS_DIR)) {
+        for (const dir of fs.readdirSync(PROJECTS_DIR)) {
+          try {
+            const stat = fs.statSync(path.join(PROJECTS_DIR, dir))
+            if (!stat.isDirectory()) continue
+            const decodedPath = decodeProjectPath(dir)
+            const name = path.basename(decodedPath)
+            const memDir = path.join(PROJECTS_DIR, dir, 'memory')
+            const memCount = fs.existsSync(memDir)
+              ? fs.readdirSync(memDir).filter(f => f.endsWith('.md')).length
+              : 0
+            // Count sessions (jsonl files)
+            const sessions = fs.readdirSync(path.join(PROJECTS_DIR, dir))
+              .filter(f => f.endsWith('.jsonl')).length
+            projects.push({
+              name,
+              encodedName: dir,
+              path: decodedPath,
+              memoryCount: memCount,
+              sessionCount: sessions,
+            })
+          } catch {}
+        }
+      }
+      projects.sort((a, b) => a.name.localeCompare(b.name))
+      res.end(JSON.stringify(projects))
+      return
+    }
+
+    // ── Chat: Claude Code native mode (streaming) ──
+    if (pathname === '/chat/cc' && req.method === 'POST') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          const { message, project } = JSON.parse(body)
+          if (!message || !message.trim()) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: 'Message is required' }))
+            return
+          }
+
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Connection', 'keep-alive')
+
+          // Build command: claude -p --output-format stream-json --include-partial-messages
+          const args = ['-p', '--output-format', 'stream-json', '--include-partial-messages', message]
+          const opts = {
+            cwd: project ? decodeProjectPath(project) : HOME,
+            env: { ...process.env, HOME },
+            timeout: 300000,
+            maxBuffer: 50 * 1024 * 1024,
+          }
+
+          const child = exec('claude', args, opts)
+          let buffer = ''
+
+          child.stdout.on('data', (data) => {
+            buffer += data.toString()
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+            for (const line of lines) {
+              if (!line.trim()) continue
+              try {
+                const parsed = JSON.parse(line)
+                // Extract text from stream-json format
+                if (parsed.type === 'assistant' && parsed.message?.content) {
+                  for (const block of parsed.message.content) {
+                    if (block.type === 'text' && block.text) {
+                      res.write(`data: ${JSON.stringify({ token: block.text })}\n\n`)
+                    }
+                  }
+                } else if (parsed.type === 'result') {
+                  res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+                }
+              } catch {}
+            }
+          })
+
+          child.on('close', (code) => {
+            // Flush remaining buffer
+            if (buffer.trim()) {
+              try {
+                const parsed = JSON.parse(buffer)
+                if (parsed.type === 'assistant' && parsed.message?.content) {
+                  for (const block of parsed.message.content) {
+                    if (block.type === 'text' && block.text) {
+                      res.write(`data: ${JSON.stringify({ token: block.text })}\n\n`)
+                    }
+                  }
+                }
+              } catch {}
+            }
+            if (code !== 0) {
+              res.write(`data: ${JSON.stringify({ error: `Claude Code exited with code ${code}` })}\n\n`)
+            }
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+            res.end()
+          })
+
+          child.stderr.on('data', (data) => {
+            res.write(`data: ${JSON.stringify({ token: data.toString() })}\n\n`)
+          })
+        } catch (e) {
+          res.write(`data: ${JSON.stringify({ error: String(e) })}\n\n`)
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+          res.end()
+        }
+      })
+      return
+    }
+
+    // ── Chat: API mode (streaming via NDJSON) ──
     if (pathname === '/chat' && req.method === 'POST') {
       let body = ''
       req.on('data', chunk => body += chunk)

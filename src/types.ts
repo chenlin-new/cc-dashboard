@@ -115,6 +115,14 @@ export interface Settings {
   localSettings: Record<string, any> | null
 }
 
+export interface ProjectInfo {
+  name: string
+  encodedName: string
+  path: string
+  memoryCount: number
+  sessionCount: number
+}
+
 export interface Stats {
   memoryCount: number
   memoryByType: Record<string, number>

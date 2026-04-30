@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Wrench,
   Sparkles,
@@ -20,6 +21,9 @@ import { fetchSkills, saveSkill } from '../api'
 import type { SkillItem } from '../types'
 
 export default function SkillsPage() {
+  const [searchParams] = useSearchParams()
+  const filterProject = searchParams.get('project') || ''
+
   const [skills, setSkills] = useState<SkillItem[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -74,7 +78,11 @@ export default function SkillsPage() {
     }
   }
 
-  const filtered = filter === 'all' ? skills : skills.filter(s => s.source === filter)
+  const filtered = skills.filter(s => {
+    if (filterProject && s.project !== filterProject) return false
+    if (filter !== 'all' && s.source !== filter) return false
+    return true
+  })
   const globalCount = skills.filter(s => s.source === 'claude-global').length
   const projectCount = skills.filter(s => s.source === 'project').length
 
@@ -107,9 +115,15 @@ export default function SkillsPage() {
         <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100">
           <Wrench className="h-6 w-6 text-purple-400" />
           技能
+          {filterProject && (
+            <span className="flex items-center gap-1 text-sm font-normal text-slate-500">
+              <span className="text-slate-600">/</span>
+              <span className="text-purple-400">{filterProject.replace(/^-/, '').replace(/-/g, '/').split('/').filter(Boolean).pop()}</span>
+            </span>
+          )}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          共 {skills.length} 个技能（全局 {globalCount} · 项目 {projectCount}）
+          共 {filtered.length} 个技能{filterProject ? '（已按项目过滤）' : `（全局 ${globalCount} · 项目 ${projectCount}）`}
         </p>
       </div>
 
