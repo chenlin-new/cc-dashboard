@@ -26,6 +26,20 @@ Claude Code 的 Web 可视化面板 —— 一站式管理记忆、任务、技�
 | **搜索** | Ctrl+K 全局搜索记忆、任务、技能 |
 | **命令** | Ctrl+P 命令面板快速导航 |
 
+## 界面预览
+
+| 概览 | 聊天 |
+|------|------|
+| ![概览](screenshots/dashboard.png) | ![聊天](screenshots/chat.png) |
+
+| 任务看板 | MCP 管理 |
+|----------|----------|
+| ![任务](screenshots/tasks.png) | ![MCP](screenshots/mcp.png) |
+
+| 会话时间轴 | 主题切换 |
+|------------|----------|
+| ![会话](screenshots/sessions.png) | ![主题](screenshots/themes.png) |
+
 ## 特性
 
 - 多套 IDEA 风格主题（深空、德古拉、北欧、One Dark、Monokai、东京夜、日光、明亮）

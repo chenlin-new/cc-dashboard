@@ -26,6 +26,20 @@ A web dashboard for **Claude Code** — manage memories, tasks, skills, MCP serv
 | **Search** | Ctrl+K global search across memories, tasks, skills |
 | **Commands** | Ctrl+P command palette for quick navigation |
 
+## Screenshots
+
+| Dashboard | Chat |
+|-----------|------|
+| ![Dashboard](screenshots/dashboard.png) | ![Chat](screenshots/chat.png) |
+
+| Task Kanban | MCP Manager |
+|-------------|-------------|
+| ![Tasks](screenshots/tasks.png) | ![MCP](screenshots/mcp.png) |
+
+| Sessions | Themes |
+|----------|--------|
+| ![Sessions](screenshots/sessions.png) | ![Themes](screenshots/themes.png) |
+
 ## Highlights
 
 - 8 IDE-inspired themes (Deep Space, Dracula, Nord, One Dark, Monokai, Tokyo Night, Solarized, Light+)
