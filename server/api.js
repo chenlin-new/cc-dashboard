@@ -13,6 +13,13 @@ const PLUGINS_DIR = path.join(CLAUDE_DIR, 'plugins')
 const CHATS_DIR = path.join(CLAUDE_DIR, 'chats')
 if (!fs.existsSync(CHATS_DIR)) fs.mkdirSync(CHATS_DIR, { recursive: true })
 
+const IS_WIN = process.platform === 'win32'
+const ENV_PATH_SEP = IS_WIN ? ';' : ':'
+
+function commandExists(cmd) {
+  try { execSync(IS_WIN ? `where ${cmd}` : `which ${cmd}`, { stdio: 'ignore' }); return true } catch { return false }
+}
+
 // ─── Helpers ───────────────────────────────────
 
 function readJsonSafe(filepath) {
