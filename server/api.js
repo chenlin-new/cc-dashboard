@@ -11,6 +11,7 @@ const TASKS_DIR = path.join(CLAUDE_DIR, 'tasks')
 const SKILLS_DIR = path.join(CLAUDE_DIR, 'skills')
 const PLUGINS_DIR = path.join(CLAUDE_DIR, 'plugins')
 const CHATS_DIR = path.join(CLAUDE_DIR, 'chats')
+const ARTHAS_SERVICES_FILE = path.join(CLAUDE_DIR, 'arthas-services.json')
 if (!fs.existsSync(CHATS_DIR)) fs.mkdirSync(CHATS_DIR, { recursive: true })
 
 const IS_WIN = process.platform === 'win32'
@@ -1497,13 +1498,49 @@ export async function handleApi(req, res) {
       return
     }
 
-    // ── Arthas: Connect & List Processes (SSH) ──
+    // ── Arthas: Service Configuration ──
+    if (pathname === '/arthas/services' && req.method === 'GET') {
+      res.end(JSON.stringify(getArthasServices()))
+      return
+    }
+    if (pathname === '/arthas/services' && req.method === 'POST') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          const svc = JSON.parse(body)
+          const saved = saveArthasService(svc)
+          res.end(JSON.stringify(saved))
+        } catch (e) {
+          res.statusCode = 500; res.end(JSON.stringify({ error: String(e) }))
+        }
+      })
+      return
+    }
+    if (segs[0] === 'arthas' && segs[1] === 'services' && segs[2] && req.method === 'DELETE') {
+      const ok = deleteArthasService(segs[2])
+      res.end(JSON.stringify({ deleted: ok }))
+      return
+    }
+
+    // ── Arthas: Connect & List Processes ──
     if (pathname === '/arthas/connect' && req.method === 'POST') {
       let body = ''
       req.on('data', chunk => body += chunk)
       req.on('end', () => {
         try {
-          const { host, user, port } = JSON.parse(body)
+          const { host, user, port, local } = JSON.parse(body)
+
+          // Local mode
+          if (local) {
+            const jpsOut = execSync('jps -l 2>/dev/null || ps aux | grep "[j]ava" | head -15', {
+              timeout: 10000, encoding: 'utf-8', maxBuffer: 1024 * 1024,
+            })
+            res.end(JSON.stringify({ connected: true, host: 'localhost', local: true, processes: parseJpsOutput(jpsOut) }))
+            return
+          }
+
+          // Remote mode (SSH)
           if (!host || !user) {
             res.statusCode = 400; res.end(JSON.stringify({ error: 'host and user required' })); return
           }
@@ -1516,22 +1553,7 @@ export async function handleApi(req, res) {
               res.end(JSON.stringify({ connected: false, error: `SSH failed: ${err.message}. Ensure key-based auth is set up.` }))
               return
             }
-            const processes = []
-            for (const line of (stdout || '').trim().split('\n')) {
-              const trimmed = line.trim()
-              if (!trimmed) continue
-              const match = trimmed.match(/^(\d+)\s+(.+)/)
-              if (match) {
-                processes.push({ pid: parseInt(match[1]), name: match[2].trim() })
-              } else {
-                const psMatch = trimmed.match(/(\d+)\s+.+java/)
-                if (psMatch) {
-                  const jarMatch = trimmed.match(/-jar\s+(\S+)/)
-                  processes.push({ pid: parseInt(psMatch[1]), name: jarMatch ? jarMatch[1] : 'java' })
-                }
-              }
-            }
-            res.end(JSON.stringify({ connected: true, host, processes }))
+            res.end(JSON.stringify({ connected: true, host, processes: parseJpsOutput(stdout || '') }))
           })
         } catch (e) {
           res.statusCode = 500; res.end(JSON.stringify({ error: String(e) }))
@@ -1540,50 +1562,46 @@ export async function handleApi(req, res) {
       return
     }
 
-    // ── Arthas: Execute Live via SSH (streaming) ──
+    // ── Arthas: Execute Live (local or SSH streaming) ──
     if (pathname === '/arthas/execute-live' && req.method === 'POST') {
       let body = ''
       req.on('data', chunk => body += chunk)
       req.on('end', () => {
         try {
-          const { host, user, port, pid, command } = JSON.parse(body)
-          if (!host || !user || !pid || !command) {
-            res.statusCode = 400; res.end(JSON.stringify({ error: 'host, user, pid, command are required' })); return
+          const { host, user, port, pid, command, local } = JSON.parse(body)
+          if (!pid || !command) {
+            res.statusCode = 400; res.end(JSON.stringify({ error: 'pid and command are required' })); return
           }
 
           res.setHeader('Content-Type', 'text/event-stream')
           res.setHeader('Cache-Control', 'no-cache')
           res.setHeader('Connection', 'keep-alive')
 
+          if (local) {
+            // Local mode: run arthas directly
+            const arthasJar = process.env.ARTHAS_JAR || '/Users/lin/dev/arthas-boot.jar'
+            const quotedCmd = command.replace(/'/g, "'\\''")
+            const telnetPort = 3658 + (pid % 9000)
+            const shellCmd = `[ -f "${arthasJar}" ] && ARTHAS_JAR="${arthasJar}" || { ARTHAS_JAR="/tmp/arthas-boot.jar"; [ ! -f "$ARTHAS_JAR" ] && { curl -sL https://arthas.aliyun.com/arthas-boot.jar -o "$ARTHAS_JAR" 2>/dev/null || wget -q https://arthas.aliyun.com/arthas-boot.jar -O "$ARTHAS_JAR" 2>/dev/null; }; }; java -jar "$ARTHAS_JAR" ${pid} --telnet-port ${telnetPort} --http-port=-1 -c '${quotedCmd}' 2>&1`
+            const child = exec(shellCmd, { timeout: 120000, maxBuffer: 50 * 1024 * 1024, shell: '/bin/bash' })
+            streamProcessOutput(child, res)
+            return
+          }
+
+          // Remote mode: SSH
+          if (!host || !user) {
+            res.statusCode = 400; res.end(JSON.stringify({ error: 'host and user required for remote' })); return
+          }
           const sshTarget = `${user}@${host}`
           const sshPort = String(port || 22)
-          // Base64-encode the arthas command for safe remote execution
           const encodedCmd = Buffer.from(command, 'utf-8').toString('base64')
-          const remoteCmd = `ARTHAS_JAR=\${ARTHAS_JAR:-/tmp/arthas-boot.jar}; [ ! -f "$ARTHAS_JAR" ] && { curl -sL https://arthas.aliyun.com/arthas-boot.jar -o "$ARTHAS_JAR" 2>/dev/null || wget -q https://arthas.aliyun.com/arthas-boot.jar -O "$ARTHAS_JAR" 2>/dev/null; }; echo '${encodedCmd}' | base64 -d | xargs -I{} java -jar "$ARTHAS_JAR" ${pid} -c '{}' 2>&1`
+          const rTelnetPort = 3658 + (pid % 9000)
+          const remoteCmd = `ARTHAS_JAR=\${ARTHAS_JAR:-/tmp/arthas-boot.jar}; [ ! -f "$ARTHAS_JAR" ] && { curl -sL https://arthas.aliyun.com/arthas-boot.jar -o "$ARTHAS_JAR" 2>/dev/null || wget -q https://arthas.aliyun.com/arthas-boot.jar -O "$ARTHAS_JAR" 2>/dev/null; }; echo '${encodedCmd}' | base64 -d | xargs -I{} java -jar "$ARTHAS_JAR" ${pid} --telnet-port ${rTelnetPort} --http-port=-1 -c '{}' 2>&1`
 
           const child = execFile('ssh', ['-p', sshPort, '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=no', sshTarget, remoteCmd], {
             timeout: 120000, maxBuffer: 50 * 1024 * 1024,
           })
-
-          let buffer = ''
-          child.stdout.on('data', (data) => {
-            buffer += data.toString()
-            const lines = buffer.split('\n')
-            buffer = lines.pop() || ''
-            for (const line of lines) {
-              if (line.trim()) res.write(`data: ${JSON.stringify({ output: line })}\n\n`)
-            }
-          })
-
-          child.stderr.on('data', (data) => {
-            res.write(`data: ${JSON.stringify({ output: `[stderr] ${data.toString()}` })}\n\n`)
-          })
-
-          child.on('close', (code) => {
-            if (buffer.trim()) res.write(`data: ${JSON.stringify({ output: buffer.trim() })}\n\n`)
-            res.write(`data: ${JSON.stringify({ done: true, exitCode: code })}\n\n`)
-            res.end()
-          })
+          streamProcessOutput(child, res)
         } catch (e) {
           res.statusCode = 500; res.end(JSON.stringify({ error: String(e) }))
         }
@@ -1638,15 +1656,76 @@ export async function handleApi(req, res) {
 
 // ─── Arthas Helpers ─────────────────────────────
 
-const PMS_SERVICES = [
-  'fjskec-pms-service',
-  'fjskec-pms-gateway',
-  'fjskec-pms-ai',
-  'fjskec-pms-app',
-  'fjskec-pms-socket',
-  'fjskec-pms-common-service',
-  'fjskec-sso',
+const DEFAULT_ARTHAS_SERVICES = [
+  { id: 'demo-1', name: 'my-app', displayName: 'My Application', processName: 'my-app', defaultPackage: 'com.example' },
 ]
+
+function getArthasServices() {
+  const data = readJsonSafe(ARTHAS_SERVICES_FILE)
+  if (data && Array.isArray(data.services)) return data.services
+  return [...DEFAULT_ARTHAS_SERVICES]
+}
+
+function saveArthasService(svc) {
+  if (!svc.name || !svc.processName) throw new Error('name and processName are required')
+  const services = getArthasServices()
+  const idx = services.findIndex(s => s.id === svc.id)
+  if (idx >= 0) {
+    services[idx] = { ...services[idx], ...svc }
+  } else {
+    svc.id = svc.id || randomUUID().slice(0, 8)
+    services.push(svc)
+  }
+  writeJsonSafe(ARTHAS_SERVICES_FILE, { services })
+  return svc.id ? services.find(s => s.id === svc.id) : services[services.length - 1]
+}
+
+function deleteArthasService(id) {
+  const services = getArthasServices()
+  const filtered = services.filter(s => s.id !== id)
+  if (filtered.length === services.length) return false
+  writeJsonSafe(ARTHAS_SERVICES_FILE, { services: filtered })
+  return true
+}
+
+function parseJpsOutput(out) {
+  const processes = []
+  for (const line of (out || '').trim().split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const match = trimmed.match(/^(\d+)\s+(.+)/)
+    if (match) {
+      processes.push({ pid: parseInt(match[1]), name: match[2].trim() })
+    } else {
+      const psMatch = trimmed.match(/(\d+)\s+.+java/)
+      if (psMatch) {
+        const jarMatch = trimmed.match(/-jar\s+(\S+)/)
+        processes.push({ pid: parseInt(psMatch[1]), name: jarMatch ? jarMatch[1] : 'java' })
+      }
+    }
+  }
+  return processes
+}
+
+function streamProcessOutput(child, res) {
+  let buffer = ''
+  child.stdout.on('data', (data) => {
+    buffer += data.toString()
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+    for (const line of lines) {
+      if (line.trim()) res.write(`data: ${JSON.stringify({ output: line })}\n\n`)
+    }
+  })
+  child.stderr.on('data', (data) => {
+    res.write(`data: ${JSON.stringify({ output: `[stderr] ${data.toString()}` })}\n\n`)
+  })
+  child.on('close', (code) => {
+    if (buffer.trim()) res.write(`data: ${JSON.stringify({ output: buffer.trim() })}\n\n`)
+    res.write(`data: ${JSON.stringify({ done: true, exitCode: code })}\n\n`)
+    res.end()
+  })
+}
 
 const COMMAND_TEMPLATES = {
   watch_error: (method) =>

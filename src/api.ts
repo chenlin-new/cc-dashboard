@@ -359,11 +359,27 @@ export function deleteChatSession(id: string): Promise<{ deleted: boolean }> {
 }
 
 // ── Arthas ──
-export function connectArthas(host: string, user: string, port?: number): Promise<{ connected: boolean; host?: string; processes?: { pid: number; name: string }[]; error?: string }> {
+export function fetchArthasServices(): Promise<import('./types').ArthasService[]> {
+  return fetchJson(`${BASE}/arthas/services`)
+}
+
+export function saveArthasService(svc: import('./types').ArthasService): Promise<import('./types').ArthasService> {
+  return fetchJson(`${BASE}/arthas/services`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(svc),
+  })
+}
+
+export function deleteArthasService(id: string): Promise<{ deleted: boolean }> {
+  return fetchJson(`${BASE}/arthas/services/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function connectArthas(host: string, user: string, port?: number, local?: boolean): Promise<{ connected: boolean; host?: string; local?: boolean; processes?: { pid: number; name: string }[]; error?: string }> {
   return fetchJson(`${BASE}/arthas/connect`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ host, user, port }),
+    body: JSON.stringify({ host, user, port, local }),
   })
 }
 
@@ -373,6 +389,7 @@ export function executeArthasLive(
   pid: number,
   command: string,
   port: number | undefined,
+  local: boolean,
   onOutput: (line: string) => void,
   onDone: (exitCode: number) => void,
   onError: (err: string) => void,
@@ -383,7 +400,7 @@ export function executeArthasLive(
       const res = await fetch(`${BASE}/arthas/execute-live`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, user, port, pid, command }),
+        body: JSON.stringify({ host, user, port, pid, command, local }),
         signal: ctrl.signal,
       })
       const reader = res.body?.getReader()

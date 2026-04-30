@@ -134,6 +134,15 @@ export interface Stats {
 }
 
 // ── Arthas ──
+export interface ArthasService {
+  id: string
+  name: string
+  displayName: string
+  processName: string
+  defaultPackage: string
+  mainClass?: string
+}
+
 export interface ArthasCommand {
   type: string
   label?: string
