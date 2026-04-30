@@ -12,6 +12,8 @@ const pages = [
   { path: '/tasks', file: 'tasks.png', wait: 1500 },
   { path: '/mcp', file: 'mcp.png', wait: 1500 },
   { path: '/sessions', file: 'sessions.png', wait: 1500 },
+  { path: '/skills', file: 'skills.png', wait: 1500 },
+  { path: '/project/-Users-lin-Desktop-cc-dashboard', file: 'project.png', wait: 2000 },
 ]
 
 async function main() {

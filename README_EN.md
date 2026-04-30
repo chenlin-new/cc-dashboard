@@ -14,11 +14,12 @@ A web dashboard for **Claude Code** — manage memories, tasks, skills, MCP serv
 | Module | Description |
 |--------|-------------|
 | **Dashboard** | Stats overview, memory/task charts, 7-day activity, project breakdown |
-| **Chat** | Streaming AI chat with multi-tab + split-pane layout, edit/copy/export to Markdown |
-| **Memory** | Browse and edit Claude Code project memory files |
+| **Projects** | Left sidebar project list, per-project CC native chat, memory & skill filtering |
+| **Chat** | Streaming AI chat with multi-tab + split-pane, CC native mode & API mode |
+| **Memory** | Browse, create & delete Claude Code project memories, frontmatter editing |
 | **Tasks** | Kanban + list views, scheduling, batch operations, inline execution |
 | **Sessions** | Timeline of all Claude Code sessions with search, favorites, and tags |
-| **Skills** | Browse Markdown skill files, edit/preview with syntax highlighting, source badges |
+| **Skills** | Browse Markdown skill files, edit/preview, global/project/custom source badges |
 | **MCP** | Manage MCP server configs, health checks, **marketplace search & one-click install** |
 | **Plugins** | Installed plugin management, **NPM marketplace search & one-click install** |
 | **Agents** | Agent tracking with tree and DAG views |
@@ -28,17 +29,21 @@ A web dashboard for **Claude Code** — manage memories, tasks, skills, MCP serv
 
 ## Screenshots
 
-| Dashboard | Chat |
-|-----------|------|
-| ![Dashboard](screenshots/dashboard.png) | ![Chat](screenshots/chat.png) |
+| Project Chat | Dashboard |
+|--------------|-----------|
+| ![Project](screenshots/project.png) | ![Dashboard](screenshots/dashboard.png) |
 
-| Task Kanban | MCP Manager |
-|-------------|-------------|
-| ![Tasks](screenshots/tasks.png) | ![MCP](screenshots/mcp.png) |
+| Chat | Task Kanban |
+|------|-------------|
+| ![Chat](screenshots/chat.png) | ![Tasks](screenshots/tasks.png) |
 
-| Sessions | Themes |
-|----------|--------|
-| ![Sessions](screenshots/sessions.png) | ![Themes](screenshots/themes.png) |
+| MCP Manager | Sessions |
+|-------------|----------|
+| ![MCP](screenshots/mcp.png) | ![Sessions](screenshots/sessions.png) |
+
+| Skills | Themes |
+|--------|--------|
+| ![Skills](screenshots/skills.png) | ![Themes](screenshots/themes.png) |
 
 ## Highlights
 

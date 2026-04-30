@@ -14,11 +14,12 @@ Claude Code 的 Web 可视化面板 —— 一站式管理记忆、任务、技�
 | 模块 | 说明 |
 |------|------|
 | **概览** | 统计面板，记忆/任务图表，7 日活动趋势，项目分布 |
-| **聊天** | 流式 AI 对话，多标签页 + 分屏面板，支持编辑/复制/导出 Markdown |
-| **记忆** | 浏览和编辑 Claude Code 的项目记忆文件 |
+| **项目** | 左侧项目列表，每个项目可独立聊天（CC 原生）、查看记忆和技能 |
+| **聊天** | 流式 AI 对话，多标签页 + 分屏面板，支持 CC 原生模式与 API 模式 |
+| **记忆** | 浏览和编辑 Claude Code 的项目记忆文件，支持手动创建和删除 |
 | **任务** | 看板 + 列表双视图，定时调度，批量操作，内联执行 |
 | **会话** | 所有 Claude Code 会话时间轴，支持搜索、收藏、标签 |
-| **技能** | 浏览 Markdown 技能文件，支持编辑/预览，区分全局和项目来源 |
+| **技能** | 浏览 Markdown 技能文件，支持编辑/预览，区分全局、项目和自定义来源 |
 | **MCP** | 管理 MCP 服务器配置，健康检查，**市场搜索与一键安装** |
 | **插件** | 已安装插件管理，**NPM 市场搜索与一键安装** |
 | **Agent** | Agent 追踪，树形/拓扑图双视图 |
@@ -28,17 +29,21 @@ Claude Code 的 Web 可视化面板 —— 一站式管理记忆、任务、技�
 
 ## 界面预览
 
-| 概览 | 聊天 |
-|------|------|
-| ![概览](screenshots/dashboard.png) | ![聊天](screenshots/chat.png) |
+| 项目聊天 | 概览 |
+|----------|------|
+| ![项目](screenshots/project.png) | ![概览](screenshots/dashboard.png) |
 
-| 任务看板 | MCP 管理 |
+| 聊天 | 任务看板 |
+|------|----------|
+| ![聊天](screenshots/chat.png) | ![任务](screenshots/tasks.png) |
+
+| MCP 管理 | 会话时间轴 |
+|----------|------------|
+| ![MCP](screenshots/mcp.png) | ![会话](screenshots/sessions.png) |
+
+| 技能管理 | 主题切换 |
 |----------|----------|
-| ![任务](screenshots/tasks.png) | ![MCP](screenshots/mcp.png) |
-
-| 会话时间轴 | 主题切换 |
-|------------|----------|
-| ![会话](screenshots/sessions.png) | ![主题](screenshots/themes.png) |
+| ![技能](screenshots/skills.png) | ![主题](screenshots/themes.png) |
 
 ## 特性
 
