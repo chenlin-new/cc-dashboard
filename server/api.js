@@ -148,8 +148,15 @@ function walkSkills() {
   const results = []
 
   // Helper: convert path-encoded directory name to actual filesystem path
+  // macOS/Linux: -Users-lin-Desktop → /Users/lin/Desktop
+  // Windows: C--Users-lin-Desktop → C:/Users/lin/Desktop
   function decodeProjectPath(name) {
-    return '/' + name.replace(/^-/, '').replace(/-/g, '/')
+    const decoded = name.replace(/-/g, '/')
+    if (IS_WIN) {
+      // Windows drive letter: C--Users → C:/Users
+      return decoded.replace(/^(\w)\//, '$1:/')
+    }
+    return '/' + decoded.replace(/^-/, '')
   }
 
   // 1) Global skills: ~/.claude/skills/*.md
@@ -219,7 +226,7 @@ function walkSkills() {
   }
 
   // 3) Custom paths via CC_MCP_PATHS (reuse for skills too)
-  const extraPaths = (process.env.CC_MCP_PATHS || '').split(':').filter(Boolean)
+  const extraPaths = (process.env.CC_MCP_PATHS || '').split(ENV_PATH_SEP).filter(Boolean)
   for (const extraPath of extraPaths) {
     const skillsPath = path.join(extraPath, '.claude', 'skills')
     if (!fs.existsSync(skillsPath)) continue
@@ -324,7 +331,7 @@ function findMcpConfigs() {
     }
   }
   // Support CC_MCP_PATHS env var for extra project paths (colon-separated)
-  const envPaths = (process.env.CC_MCP_PATHS || '').split(':').filter(Boolean)
+  const envPaths = (process.env.CC_MCP_PATHS || '').split(ENV_PATH_SEP).filter(Boolean)
   for (const projectPath of envPaths) {
     if (customPaths.includes(projectPath)) continue // deduplicate
     const mcpPath = path.join(projectPath, '.mcp.json')
@@ -402,14 +409,16 @@ function getActiveAgents() {
 
 function executeInCc(taskId, subject) {
   try {
-    // Write a flag file that CC monitors
     const flagDir = path.join(CLAUDE_DIR, 'tasks', taskId)
     if (!fs.existsSync(flagDir)) fs.mkdirSync(flagDir, { recursive: true })
-    // The task file was already created via createTask()
-    // Try to launch CC via Terminal
     const escaped = subject.replace(/"/g, '\\"')
-    const cmd = `osascript -e 'tell application "Terminal" to activate' -e 'tell application "Terminal" to do script "cd ~ && echo \\"${escaped}\\" | claude code"'`
-    execSync(cmd, { timeout: 5000 })
+    if (IS_WIN) {
+      const cmd = `start cmd /c "cd /d %USERPROFILE% && echo ${escaped} | claude"`
+      execSync(cmd, { timeout: 5000, windowsHide: false })
+    } else {
+      const cmd = `osascript -e 'tell application "Terminal" to activate' -e 'tell application "Terminal" to do script "cd ~ && echo \\"${escaped}\\" | claude"'`
+      execSync(cmd, { timeout: 5000 })
+    }
     return { launched: true }
   } catch (e) {
     return { launched: false, error: e.message }
@@ -418,7 +427,11 @@ function executeInCc(taskId, subject) {
 
 function launchCc() {
   try {
-    execSync(`osascript -e 'tell application "Terminal" to activate' -e 'tell application "Terminal" to do script "cd ~ && claude code"'`, { timeout: 5000 })
+    if (IS_WIN) {
+      execSync(`start cmd /c "cd /d %USERPROFILE% && claude"`, { timeout: 5000, windowsHide: false })
+    } else {
+      execSync(`osascript -e 'tell application "Terminal" to activate' -e 'tell application "Terminal" to do script "cd ~ && claude"'`, { timeout: 5000 })
+    }
     return { launched: true }
   } catch (e) {
     return { launched: false, error: e.message }
@@ -840,7 +853,7 @@ export async function handleApi(req, res) {
             try { const c = new AbortController(); setTimeout(() => c.abort(), 3000); const r = await fetch(srv.url, { signal: c.signal }); results[name] = r.ok ? 'online' : 'error' }
             catch { results[name] = 'offline' }
           } else if (srv.command) {
-            try { execSync(`which ${srv.command.split(' ')[0]}`, { stdio: 'ignore' }); results[name] = 'installed' }
+            try { if (commandExists(srv.command.split(' ')[0])) results[name] = 'installed' }
             catch { results[name] = 'not-found' }
           } else { results[name] = 'unknown' }
         }
