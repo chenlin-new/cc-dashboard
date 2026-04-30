@@ -357,3 +357,75 @@ export function patchChatSession(id: string, patch: { favorite?: boolean; tags?:
 export function deleteChatSession(id: string): Promise<{ deleted: boolean }> {
   return fetchJson(`${BASE}/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
+
+// ── Arthas ──
+export function connectArthas(host: string, user: string, port?: number): Promise<{ connected: boolean; host?: string; processes?: { pid: number; name: string }[]; error?: string }> {
+  return fetchJson(`${BASE}/arthas/connect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host, user, port }),
+  })
+}
+
+export function executeArthasLive(
+  host: string,
+  user: string,
+  pid: number,
+  command: string,
+  port: number | undefined,
+  onOutput: (line: string) => void,
+  onDone: (exitCode: number) => void,
+  onError: (err: string) => void,
+): AbortController {
+  const ctrl = new AbortController()
+  ;(async () => {
+    try {
+      const res = await fetch(`${BASE}/arthas/execute-live`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host, user, port, pid, command }),
+        signal: ctrl.signal,
+      })
+      const reader = res.body?.getReader()
+      if (!reader) { onError('No response body'); return }
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const parsed = JSON.parse(line.slice(6))
+              if (parsed.output) onOutput(parsed.output)
+              if (parsed.error) onError(parsed.error)
+              if (parsed.done) { onDone(parsed.exitCode ?? 0); return }
+            } catch {}
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') onError(String(e.message))
+    }
+  })()
+  return ctrl
+}
+
+export function generateArthasScript(payload: import('./types').ArthasScriptPayload): Promise<{ script: string; filename: string }> {
+  return fetchJson(`${BASE}/arthas/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function analyzeArthasLog(content: string): Promise<import('./types').ArthasAnalyzeResult> {
+  return fetchJson(`${BASE}/arthas/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+}

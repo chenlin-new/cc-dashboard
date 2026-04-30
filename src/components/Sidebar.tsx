@@ -8,6 +8,7 @@ import {
   Cpu,
   Puzzle,
   Radio,
+  Bug,
   Settings2,
   Sparkles,
   Palette,
@@ -18,6 +19,8 @@ import {
   MessageSquare,
   FolderHeart,
   FolderGit2,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { useLocale } from '../contexts/LocaleContext'
 import { useTheme, themeOptions } from '../contexts/ThemeContext'
@@ -34,16 +37,32 @@ const navItems = [
   { to: '/skills', icon: Wrench, label: 'nav.skills' },
   { to: '/mcp', icon: Cpu, label: 'nav.mcp' },
   { to: '/plugins', icon: Puzzle, label: 'nav.plugins' },
+  { to: '/arthas', icon: Bug, label: 'nav.arthas' },
   { to: '/settings', icon: Settings2, label: 'nav.settings' },
 ]
+
+const VIS_KEY = 'cc-dashboard-hidden-nav'
+
+function loadHidden(): Set<string> {
+  try {
+    const raw = localStorage.getItem(VIS_KEY)
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set<string>()
+  } catch { return new Set() }
+}
+
+function saveHidden(s: Set<string>) {
+  localStorage.setItem(VIS_KEY, JSON.stringify([...s]))
+}
 
 export default function Sidebar() {
   const { locale, setLocale, t } = useLocale()
   const { theme, setTheme } = useTheme()
   const [showThemePicker, setShowThemePicker] = useState(false)
+  const [showVisPicker, setShowVisPicker] = useState(false)
   const [projects, setProjects] = useState<ProjectInfo[]>([])
   const [showProjects, setShowProjects] = useState(true)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+  const [hiddenItems, setHiddenItems] = useState<Set<string>>(loadHidden)
   const navigate = useNavigate()
   const location = useLocation()
   const activeProject = location.pathname.startsWith('/project/')
@@ -68,6 +87,18 @@ export default function Sidebar() {
       return next
     })
   }
+
+  const toggleHidden = (label: string) => {
+    setHiddenItems(prev => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      saveHidden(next)
+      return next
+    })
+  }
+
+  const visibleItems = navItems.filter(item => !hiddenItems.has(item.label))
 
   return (
     <aside className="flex w-60 flex-col border-r border-slate-800/50 bg-slate-900/30 backdrop-blur-2xl">
@@ -157,7 +188,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 overflow-y-auto py-2">
-        {navItems.map((item) => (
+        {visibleItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -183,6 +214,43 @@ export default function Sidebar() {
 
       {/* Bottom Controls */}
       <div className="border-t border-slate-800/50 px-3 pt-3 pb-4 space-y-2">
+        {/* Visibility Picker */}
+        <div>
+          <button
+            onClick={() => setShowVisPicker(!showVisPicker)}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-400 transition-all hover:bg-slate-800/40 hover:text-slate-200"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            <span className="flex-1 text-left">{t('sidebar.visibility')}</span>
+            <span className="text-[10px] text-slate-600 tabular-nums">{visibleItems.length}/{navItems.length}</span>
+            <ChevronUp className={`h-3 w-3 transition-transform ${showVisPicker ? '' : 'rotate-180'}`} />
+          </button>
+          {showVisPicker && (
+            <div className="mt-1.5 space-y-0.5 px-2 max-h-[300px] overflow-y-auto">
+              {navItems.map((item) => {
+                const hidden = hiddenItems.has(item.label)
+                return (
+                  <button
+                    key={item.to}
+                    onClick={() => toggleHidden(item.label)}
+                    className={`flex items-center gap-2 w-full rounded-lg px-2 py-1.5 transition-all ${
+                      hidden ? 'text-slate-600 hover:bg-slate-800/40' : 'text-slate-300 hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <item.icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="flex-1 text-left text-[11px]">{t(item.label)}</span>
+                    {hidden ? (
+                      <EyeOff className="h-3 w-3 shrink-0 text-slate-600" />
+                    ) : (
+                      <Eye className="h-3 w-3 shrink-0 text-sky-400" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Theme picker */}
         <div>
           <button

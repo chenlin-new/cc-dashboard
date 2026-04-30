@@ -2,7 +2,7 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { randomUUID } from 'crypto'
-import { execSync, exec } from 'child_process'
+import { execSync, exec, execFile } from 'child_process'
 
 const HOME = os.homedir()
 const CLAUDE_DIR = path.join(HOME, '.claude')
@@ -1497,10 +1497,393 @@ export async function handleApi(req, res) {
       return
     }
 
+    // ── Arthas: Connect & List Processes (SSH) ──
+    if (pathname === '/arthas/connect' && req.method === 'POST') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          const { host, user, port } = JSON.parse(body)
+          if (!host || !user) {
+            res.statusCode = 400; res.end(JSON.stringify({ error: 'host and user required' })); return
+          }
+          const sshTarget = `${user}@${host}`
+          const sshPort = String(port || 22)
+          const args = ['-p', sshPort, '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=no', sshTarget, 'jps -l 2>/dev/null || ps aux | grep "[j]ava" | head -15']
+
+          execFile('ssh', args, { timeout: 15000, maxBuffer: 1024 * 1024, encoding: 'utf-8' }, (err, stdout, stderr) => {
+            if (err) {
+              res.end(JSON.stringify({ connected: false, error: `SSH failed: ${err.message}. Ensure key-based auth is set up.` }))
+              return
+            }
+            const processes = []
+            for (const line of (stdout || '').trim().split('\n')) {
+              const trimmed = line.trim()
+              if (!trimmed) continue
+              const match = trimmed.match(/^(\d+)\s+(.+)/)
+              if (match) {
+                processes.push({ pid: parseInt(match[1]), name: match[2].trim() })
+              } else {
+                const psMatch = trimmed.match(/(\d+)\s+.+java/)
+                if (psMatch) {
+                  const jarMatch = trimmed.match(/-jar\s+(\S+)/)
+                  processes.push({ pid: parseInt(psMatch[1]), name: jarMatch ? jarMatch[1] : 'java' })
+                }
+              }
+            }
+            res.end(JSON.stringify({ connected: true, host, processes }))
+          })
+        } catch (e) {
+          res.statusCode = 500; res.end(JSON.stringify({ error: String(e) }))
+        }
+      })
+      return
+    }
+
+    // ── Arthas: Execute Live via SSH (streaming) ──
+    if (pathname === '/arthas/execute-live' && req.method === 'POST') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          const { host, user, port, pid, command } = JSON.parse(body)
+          if (!host || !user || !pid || !command) {
+            res.statusCode = 400; res.end(JSON.stringify({ error: 'host, user, pid, command are required' })); return
+          }
+
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Connection', 'keep-alive')
+
+          const sshTarget = `${user}@${host}`
+          const sshPort = String(port || 22)
+          // Base64-encode the arthas command for safe remote execution
+          const encodedCmd = Buffer.from(command, 'utf-8').toString('base64')
+          const remoteCmd = `ARTHAS_JAR=\${ARTHAS_JAR:-/tmp/arthas-boot.jar}; [ ! -f "$ARTHAS_JAR" ] && { curl -sL https://arthas.aliyun.com/arthas-boot.jar -o "$ARTHAS_JAR" 2>/dev/null || wget -q https://arthas.aliyun.com/arthas-boot.jar -O "$ARTHAS_JAR" 2>/dev/null; }; echo '${encodedCmd}' | base64 -d | xargs -I{} java -jar "$ARTHAS_JAR" ${pid} -c '{}' 2>&1`
+
+          const child = execFile('ssh', ['-p', sshPort, '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=no', sshTarget, remoteCmd], {
+            timeout: 120000, maxBuffer: 50 * 1024 * 1024,
+          })
+
+          let buffer = ''
+          child.stdout.on('data', (data) => {
+            buffer += data.toString()
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+            for (const line of lines) {
+              if (line.trim()) res.write(`data: ${JSON.stringify({ output: line })}\n\n`)
+            }
+          })
+
+          child.stderr.on('data', (data) => {
+            res.write(`data: ${JSON.stringify({ output: `[stderr] ${data.toString()}` })}\n\n`)
+          })
+
+          child.on('close', (code) => {
+            if (buffer.trim()) res.write(`data: ${JSON.stringify({ output: buffer.trim() })}\n\n`)
+            res.write(`data: ${JSON.stringify({ done: true, exitCode: code })}\n\n`)
+            res.end()
+          })
+        } catch (e) {
+          res.statusCode = 500; res.end(JSON.stringify({ error: String(e) }))
+        }
+      })
+      return
+    }
+
+    // ── Arthas: Generate Diagnostic Script ──
+    if (pathname === '/arthas/generate' && req.method === 'POST') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          const { serviceName, commands, methods, duration } = JSON.parse(body)
+          const script = generateArthasScript({ serviceName, commands, methods, duration })
+          const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+          const safeName = (serviceName || 'java').replace(/[^a-zA-Z0-9_-]/g, '-')
+          const filename = `arthas-diagnostic-${safeName}-${ts}.sh`
+          res.end(JSON.stringify({ script, filename }))
+        } catch (e) {
+          res.statusCode = 500
+          res.end(JSON.stringify({ error: String(e) }))
+        }
+      })
+      return
+    }
+
+    // ── Arthas: Analyze Output Log ──
+    if (pathname === '/arthas/analyze' && req.method === 'POST') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          const { content } = JSON.parse(body)
+          const analysis = analyzeArthasOutput(content)
+          res.end(JSON.stringify(analysis))
+        } catch (e) {
+          res.statusCode = 500
+          res.end(JSON.stringify({ error: String(e) }))
+        }
+      })
+      return
+    }
+
     res.statusCode = 404
     res.end(JSON.stringify({ error: 'Not found' }))
   } catch (err) {
     res.statusCode = 500
     res.end(JSON.stringify({ error: String(err) }))
   }
+}
+
+// ─── Arthas Helpers ─────────────────────────────
+
+const PMS_SERVICES = [
+  'fjskec-pms-service',
+  'fjskec-pms-gateway',
+  'fjskec-pms-ai',
+  'fjskec-pms-app',
+  'fjskec-pms-socket',
+  'fjskec-pms-common-service',
+  'fjskec-sso',
+]
+
+const COMMAND_TEMPLATES = {
+  watch_error: (method) =>
+    `watch ${method} '{params, returnObj, throwExp}' -x 3 -e`,
+  watch_all: (method) =>
+    `watch ${method} '{params, returnObj, throwExp}' -x 3`,
+  trace: (method) =>
+    `trace ${method} -n 5`,
+  trace_slow: (method) =>
+    `trace ${method} '#cost > 50'`,
+  thread_top: () =>
+    `thread -n 5`,
+  thread_deadlock: () =>
+    `thread -b`,
+  dashboard: () =>
+    `dashboard -i 3 -n 1`,
+  jvm_info: () =>
+    `jvm`,
+  logger_debug: (pkg) =>
+    `logger --name ${pkg} --level DEBUG`,
+  logger_info: (pkg) =>
+    `logger --name ${pkg} --level INFO`,
+}
+
+function generateArthasScript({ serviceName, commands, methods, duration }) {
+  const lines = ['#!/bin/bash']
+  lines.push('set -e')
+  lines.push('')
+  lines.push('# ============================================================')
+  lines.push('# CC Dashboard Arthas Diagnostic Script')
+  lines.push(`# Generated: ${new Date().toISOString()}`)
+  lines.push(`# Target Service: ${serviceName || 'auto-detect'}`)
+  lines.push('# ============================================================')
+  lines.push('')
+  lines.push('OUTPUT_DIR="${1:-/tmp/arthas-diag-$(date +%Y%m%d_%H%M%S)}"')
+  lines.push('mkdir -p "$OUTPUT_DIR"')
+  lines.push('echo "📁 Output dir: $OUTPUT_DIR"')
+  lines.push('')
+  lines.push('# ── Detect Java Process ──')
+  lines.push('PID=""')
+  if (serviceName) {
+    lines.push(`SERVICE_NAME="${serviceName}"`)
+  } else {
+    lines.push('SERVICE_NAME="${SERVICE_NAME:-}"')
+  }
+  lines.push('')
+  lines.push('if command -v jps &>/dev/null; then')
+  lines.push('  if [ -n "$SERVICE_NAME" ]; then')
+  lines.push('    PID=$(jps -l 2>/dev/null | grep -i "$SERVICE_NAME" | awk \'{print $1}\' | head -1)')
+  lines.push('  fi')
+  lines.push('  if [ -z "$PID" ]; then')
+  lines.push('    echo ""')
+  lines.push('    echo "⚠️  Could not find process by name. Running Java processes:"')
+  lines.push('    jps -l 2>/dev/null || true')
+  lines.push('    echo ""')
+  lines.push('    if [ -z "$SERVICE_NAME" ]; then')
+  lines.push('      echo "Usage: SERVICE_NAME=my-app bash $0 [output-dir]"')
+  lines.push('      exit 1')
+  lines.push('    fi')
+  lines.push('  fi')
+  lines.push('elif command -v ps &>/dev/null; then')
+  lines.push('  PID=$(ps aux | grep java | grep -i "$SERVICE_NAME" | grep -v grep | awk \'{print $2}\' | head -1)')
+  lines.push('fi')
+  lines.push('')
+  lines.push('if [ -z "$PID" ]; then')
+  lines.push('  echo "❌ ERROR: Java process not found. Set SERVICE_NAME=xxx or check if the service is running."')
+  lines.push('  echo "Hint: run \`jps -l\` or \`ps aux | grep java\` to see running processes."')
+  lines.push('  exit 1')
+  lines.push('fi')
+  lines.push('')
+  lines.push('echo "✅ Found $SERVICE_NAME (PID: $PID)"')
+  lines.push('echo "PID=$PID" > "$OUTPUT_DIR/info.txt"')
+  lines.push('echo "SERVICE=$SERVICE_NAME" >> "$OUTPUT_DIR/info.txt"')
+  lines.push('date >> "$OUTPUT_DIR/info.txt"')
+  lines.push('')
+  lines.push('# ── Prepare Arthas ──')
+  lines.push('ARTHAS_JAR="${ARTHAS_JAR:-/tmp/arthas-boot.jar}"')
+  lines.push('if [ ! -f "$ARTHAS_JAR" ]; then')
+  lines.push('  echo "📥 Downloading arthas-boot.jar ..."')
+  lines.push('  if command -v curl &>/dev/null; then')
+  lines.push('    curl -sL https://arthas.aliyun.com/arthas-boot.jar -o "$ARTHAS_JAR"')
+  lines.push('  elif command -v wget &>/dev/null; then')
+  lines.push('    wget -q https://arthas.aliyun.com/arthas-boot.jar -O "$ARTHAS_JAR"')
+  lines.push('  else')
+  lines.push('    echo "❌ ERROR: curl or wget required to download Arthas"')
+  lines.push('    echo "   Manual: copy arthas-boot.jar to /tmp/arthas-boot.jar and re-run"')
+  lines.push('    exit 1')
+  lines.push('  fi')
+  lines.push('  echo "✅ Arthas ready"')
+  lines.push('fi')
+  lines.push('')
+  lines.push('run() {')
+  lines.push('  local label="$1"')
+  lines.push('  local cmd="$2"')
+  lines.push('  local out="$OUTPUT_DIR/${label}.log"')
+  lines.push('  echo ""')
+  lines.push('  echo "═══════════════════════════════════════════════════"')
+  lines.push('  echo "▶ $label"')
+  lines.push('  echo "═══════════════════════════════════════════════════" | tee "$out"')
+  lines.push('  echo "Command: $cmd" | tee -a "$out"')
+  lines.push('  echo "Started: $(date)" | tee -a "$out"')
+  lines.push('  echo "---" | tee -a "$out"')
+  if (duration && duration > 0) {
+    lines.push(`  timeout ${duration} java -jar "$ARTHAS_JAR" "$PID" -c "$cmd" 2>&1 | tee -a "$out" || true`)
+  } else {
+    lines.push('  java -jar "$ARTHAS_JAR" "$PID" -c "$cmd" 2>&1 | tee -a "$out" || true')
+  }
+  lines.push('  echo "---" | tee -a "$out"')
+  lines.push('  echo "Finished: $(date)" | tee -a "$out"')
+  lines.push('}')
+  lines.push('')
+  lines.push('echo ""')
+  lines.push('echo "🔍 Starting diagnostics on $SERVICE_NAME (PID: $PID) ..."')
+  lines.push('')
+
+  // Add configured commands
+  for (const cmd of commands || []) {
+    const template = COMMAND_TEMPLATES[cmd.type]
+    if (!template) continue
+    const label = cmd.label || cmd.type
+    let arthasCmd
+    if (cmd.type === 'logger_debug' || cmd.type === 'logger_info') {
+      arthasCmd = template(cmd.pkg || 'com.fjskec')
+    } else if (cmd.type === 'dashboard' || cmd.type === 'thread_top' || cmd.type === 'thread_deadlock' || cmd.type === 'jvm_info') {
+      arthasCmd = template()
+    } else {
+      arthasCmd = template(cmd.method || '')
+    }
+    lines.push(`run "${label}" '${arthasCmd}'`)
+  }
+
+  // Add methods watch
+  if (methods && methods.length > 0) {
+    for (const m of methods) {
+      lines.push(`run "watch:${m}" 'watch ${m} "{params, returnObj, throwExp}" -x 3 -e'`)
+      lines.push(`run "trace:${m}" 'trace ${m} -n 5'`)
+    }
+  }
+
+  lines.push('')
+  lines.push('echo ""')
+  lines.push('echo "✅ Diagnostic complete."')
+  lines.push('echo "📁 Results saved to: $OUTPUT_DIR"')
+  lines.push('echo ""')
+  lines.push('ls -la "$OUTPUT_DIR/"')
+  lines.push('')
+  lines.push('# Package results for download')
+  lines.push('TARBALL="/tmp/$(basename "$OUTPUT_DIR").tar.gz"')
+  lines.push('tar czf "$TARBALL" -C "$(dirname "$OUTPUT_DIR")" "$(basename "$OUTPUT_DIR")" 2>/dev/null || true')
+  lines.push('echo "📦 Packaged: $TARBALL"')
+
+  return lines.join('\n')
+}
+
+function analyzeArthasOutput(content) {
+  const result = {
+    sections: [],
+    errors: [],
+    warnings: [],
+    traces: [],
+    threads: [],
+    summary: '',
+  }
+
+  if (!content || !content.trim()) {
+    result.summary = 'Empty input - no Arthas output to analyze.'
+    return result
+  }
+
+  const sections = content.split(/[═╤]+/).filter(Boolean)
+
+  for (const section of sections) {
+    const trimmed = section.trim()
+    if (!trimmed) continue
+
+    // Detect section type
+    const sectionInfo = { type: 'unknown', content: trimmed.slice(0, 5000), highlights: [] }
+
+    if (trimmed.includes('▶') || trimmed.match(/^(watch|trace|thread|dashboard|logger)/im)) {
+      const labelMatch = trimmed.match(/▶\s*(.+)/)
+      sectionInfo.label = labelMatch ? labelMatch[1].trim() : trimmed.split('\n')[0].slice(0, 80)
+    }
+
+    // Extract errors/exceptions
+    const errorMatches = trimmed.matchAll(/(\w+Exception|ERROR|throwExp=\[)([^\n]*)/gi)
+    for (const m of errorMatches) {
+      const err = m[2] || m[1]
+      if (err && err.length > 5) {
+        result.errors.push(err.trim().slice(0, 200))
+      }
+    }
+
+    // Extract trace timing info
+    const timeMatches = trimmed.matchAll(/\[(\d+\.?\d*)ms\]/g)
+    for (const m of timeMatches) {
+      const ms = parseFloat(m[1])
+      if (ms > 100) {
+        sectionInfo.highlights.push(`⚠ Slow: ${ms}ms`)
+      }
+    }
+
+    // Extract thread info
+    const threadLines = trimmed.match(/^(.*?)\s+\d+\s+(\w+).*$/gm)
+    if (threadLines && threadLines.length > 3) {
+      result.threads.push(...threadLines.slice(0, 20))
+    }
+
+    // Detect section type more precisely
+    if (trimmed.match(/^\s*`---/m) || trimmed.match(/\[[\d.]+ms\]/)) {
+      sectionInfo.type = 'trace'
+      result.traces.push(trimmed.slice(0, 2000))
+    } else if (trimmed.match(/throwExp|exception/i)) {
+      sectionInfo.type = 'error'
+    } else if (trimmed.match(/thread/i) && trimmed.match(/BLOCKED|WAITING|RUNNABLE/i)) {
+      sectionInfo.type = 'thread'
+    } else if (trimmed.match(/cpu|memory|gc/i)) {
+      sectionInfo.type = 'dashboard'
+    } else {
+      sectionInfo.type = 'output'
+    }
+
+    result.sections.push(sectionInfo)
+  }
+
+  // Build summary
+  const parts = []
+  if (result.errors.length > 0) {
+    parts.push(`🔴 ${result.errors.length} exception(s) detected`)
+  }
+  const slowCalls = result.sections.reduce((sum, s) => sum + s.highlights.length, 0)
+  if (slowCalls > 0) {
+    parts.push(`🟡 ${slowCalls} slow call(s) (>100ms)`)
+  }
+  if (parts.length === 0) {
+    parts.push('✅ No obvious issues detected')
+  }
+  result.summary = parts.join(' | ') || 'Analysis complete'
+
+  return result
 }

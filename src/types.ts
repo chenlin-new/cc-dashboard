@@ -133,6 +133,30 @@ export interface Stats {
   pluginCount: number
 }
 
+// ── Arthas ──
+export interface ArthasCommand {
+  type: string
+  label?: string
+  method?: string
+  pkg?: string
+}
+
+export interface ArthasScriptPayload {
+  serviceName: string
+  commands: ArthasCommand[]
+  methods: string[]
+  duration?: number
+}
+
+export interface ArthasAnalyzeResult {
+  sections: { type: string; label?: string; content: string; highlights: string[] }[]
+  errors: string[]
+  warnings: string[]
+  traces: string[]
+  threads: string[]
+  summary: string
+}
+
 export interface MarketplaceItem {
   name: string
   description: string

@@ -12,6 +12,7 @@ import SessionsPage from './pages/SessionsPage'
 import ChatPage from './pages/ChatPage'
 import ProjectPage from './pages/ProjectPage'
 import SettingsPage from './pages/SettingsPage'
+import ArthasPage from './pages/ArthasPage'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/mcp" element={<McpPage />} />
         <Route path="/plugins" element={<PluginsPage />} />
+        <Route path="/arthas" element={<ArthasPage />} />
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/sessions" element={<SessionsPage />} />
         <Route path="/chat" element={<ChatPage />} />
