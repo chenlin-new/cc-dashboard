@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { Bug, Download, Copy, Play, Check, Upload, ChevronRight, AlertTriangle, Clock, Zap, Terminal, FileText, Server, Wifi, WifiOff, Square, Trash2, Plus, Settings2, Edit3, X } from 'lucide-react'
-import { connectArthas, executeArthasLive, generateArthasScript, analyzeArthasLog, fetchArthasServices, saveArthasService, deleteArthasService } from '../api'
+import { Bug, Download, Copy, Play, Check, Upload, ChevronRight, AlertTriangle, Clock, Zap, Terminal, FileText, Server, Wifi, WifiOff, Square, Trash2, Plus, Settings2, Edit3, X, Sparkles } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { connectArthas, executeArthasLive, generateArthasScript, analyzeArthasLog, analyzeArthasWithAI, fetchArthasServices, saveArthasService, deleteArthasService } from '../api'
 import { useLocale } from '../contexts/LocaleContext'
 import type { ArthasService, ArthasCommand, ArthasAnalyzeResult } from '../types'
 
@@ -48,6 +50,9 @@ export default function ArthasPage() {
   const [liveRunning, setLiveRunning] = useState(false)
   const [liveAbortCtrl, setLiveAbortCtrl] = useState<AbortController | null>(null)
   const [connectError, setConnectError] = useState('')
+  const [aiAnalyzing, setAiAnalyzing] = useState(false)
+  const [aiResult, setAiResult] = useState('')
+  const [aiAbortCtrl, setAiAbortCtrl] = useState<AbortController | null>(null)
   const outputRef = useRef<HTMLDivElement>(null)
 
   // ── Generator ──
@@ -129,7 +134,22 @@ export default function ArthasPage() {
 
   const handleLiveStop = () => { liveAbortCtrl?.abort(); setLiveRunning(false); setLiveAbortCtrl(null); setLiveOutput(prev => [...prev, '\n⏹ Stopped']) }
   const handleDisconnect = () => { setConnected(false); setProcesses([]); setSelectedPid(null); setLiveOutput([]) }
-  const clearOutput = () => setLiveOutput([])
+  const clearOutput = () => { setLiveOutput([]); setAiResult('') }
+
+  const handleAiAnalyze = () => {
+    const content = liveOutput.join('\n')
+    if (!content.trim()) return
+    setAiAnalyzing(true); setAiResult('')
+    const ctrl = analyzeArthasWithAI(
+      content,
+      (token) => setAiResult(prev => prev + token),
+      () => { setAiAnalyzing(false); setAiAbortCtrl(null) },
+      (err) => { setAiResult(prev => prev + (prev ? '\n\n---\n' : '') + `错误: ${err}`); setAiAnalyzing(false); setAiAbortCtrl(null) },
+    )
+    setAiAbortCtrl(ctrl)
+  }
+
+  const handleAiStop = () => { aiAbortCtrl?.abort(); setAiAnalyzing(false); setAiAbortCtrl(null) }
 
   // ── Generator ──
   const toggleCmd = (type: string) => {
@@ -428,10 +448,18 @@ export default function ArthasPage() {
                 </div>
                 <div className="flex gap-1">
                   {liveRunning && <button onClick={handleLiveStop} className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/10"><Square className="h-3 w-3" />{t('arthas.stop')}</button>}
+                  {liveOutput.length > 0 && !aiAnalyzing && (
+                    <button onClick={handleAiAnalyze} className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-sky-400 hover:bg-sky-500/10 transition-all">
+                      <Sparkles className="h-3 w-3" />AI 分析
+                    </button>
+                  )}
+                  {aiAnalyzing && (
+                    <button onClick={handleAiStop} className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/10"><Square className="h-3 w-3" />停止分析</button>
+                  )}
                   {liveOutput.length > 0 && <button onClick={clearOutput} className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-slate-500 hover:text-slate-300"><Trash2 className="h-3 w-3" />清除</button>}
                 </div>
               </div>
-              <div ref={outputRef} className="flex-1 overflow-auto p-4">
+              <div ref={outputRef} className={`flex-1 overflow-auto p-4 ${aiResult ? 'max-h-[50%]' : ''}`}>
                 {liveOutput.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center space-y-3">
@@ -443,6 +471,22 @@ export default function ArthasPage() {
                   <pre className="text-xs text-slate-300 font-mono whitespace-pre-wrap break-all leading-relaxed">{liveOutput.join('\n')}</pre>
                 )}
               </div>
+              {aiResult && (
+                <div className="border-t border-sky-500/20 bg-slate-900/60 shrink-0 max-h-[50%] overflow-y-auto">
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800/30 bg-sky-500/5">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-3.5 w-3.5 text-sky-400" />
+                      <span className="text-[11px] text-sky-400 font-medium">AI 分析结果</span>
+                    </div>
+                    <button onClick={() => setAiResult('')} className="text-slate-500 hover:text-slate-300"><X className="h-3 w-3" /></button>
+                  </div>
+                  <div className="p-4">
+                    <div className="prose prose-invert prose-xs max-w-none text-xs text-slate-300 leading-relaxed">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiResult}</ReactMarkdown>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -582,15 +626,53 @@ export default function ArthasPage() {
                     <Upload className="h-3 w-3" />{t('arthas.uploadFile')}
                   </button>
                 </div>
-                <button onClick={handleAnalyze} disabled={analyzing || !logInput.trim()}
-                  className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 transition-all"
-                  style={{ background: `linear-gradient(135deg, var(--cc-accent), var(--cc-accent-secondary))` }}>
-                  {analyzing ? <><span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('arthas.analyzing')}</> : <><Play className="h-4 w-4" />{t('arthas.analyze')}</>}
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={handleAnalyze} disabled={analyzing || !logInput.trim()}
+                    className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 transition-all"
+                    style={{ background: `linear-gradient(135deg, var(--cc-accent), var(--cc-accent-secondary))` }}>
+                    {analyzing ? <><span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('arthas.analyzing')}</> : <><Play className="h-4 w-4" />{t('arthas.analyze')}</>}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (aiAnalyzing) { handleAiStop(); return }
+                      setResult(null)
+                      const content = logInput.trim()
+                      if (!content) return
+                      setAiAnalyzing(true); setAiResult('')
+                      const ctrl = analyzeArthasWithAI(
+                        content,
+                        (token) => setAiResult(prev => prev + token),
+                        () => { setAiAnalyzing(false); setAiAbortCtrl(null) },
+                        (err) => { setAiResult(prev => prev + (prev ? '\n\n---\n' : '') + `错误: ${err}`); setAiAnalyzing(false); setAiAbortCtrl(null) },
+                      )
+                      setAiAbortCtrl(ctrl)
+                    }}
+                    disabled={!logInput.trim() && !aiAnalyzing}
+                    className="flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-400 hover:bg-sky-500/20 disabled:opacity-40 transition-all">
+                    {aiAnalyzing ? <><Square className="h-3.5 w-3.5" />停止</> : <><Sparkles className="h-3.5 w-3.5" />AI 分析</>}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
           <div className="space-y-4">
+            {aiResult && (
+              <div className="rounded-xl border border-sky-500/20 bg-slate-900/40 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-sky-500/20 bg-sky-500/5">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-3.5 w-3.5 text-sky-400" />
+                    <span className="text-xs font-semibold text-sky-400">AI 深度分析</span>
+                    {aiAnalyzing && <span className="text-[10px] text-slate-500">分析中...</span>}
+                  </div>
+                  <button onClick={() => setAiResult('')} className="text-slate-500 hover:text-slate-300"><X className="h-3 w-3" /></button>
+                </div>
+                <div className="p-4">
+                  <div className="prose prose-invert prose-xs max-w-none text-xs text-slate-300 leading-relaxed">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiResult + (aiAnalyzing ? '▌' : '')}</ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            )}
             {result ? (<>
               <div className="rounded-xl border border-slate-800/50 bg-slate-900/40 p-4">
                 <h3 className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-3 uppercase tracking-wider"><Check className="h-3.5 w-3.5" />{t('arthas.resultSummary')}</h3>

@@ -446,3 +446,47 @@ export function analyzeArthasLog(content: string): Promise<import('./types').Art
     body: JSON.stringify({ content }),
   })
 }
+
+export function analyzeArthasWithAI(
+  content: string,
+  onToken: (token: string) => void,
+  onDone: (fullText: string) => void,
+  onError: (err: string) => void,
+): AbortController {
+  const ctrl = new AbortController()
+  ;(async () => {
+    try {
+      const res = await fetch(`${BASE}/arthas/ai-analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+        signal: ctrl.signal,
+      })
+      const reader = res.body?.getReader()
+      if (!reader) { onError('No response body'); return }
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let fullText = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const parsed = JSON.parse(line.slice(6))
+              if (parsed.token) { fullText += parsed.token; onToken(parsed.token) }
+              if (parsed.error) onError(parsed.error)
+              if (parsed.done) { onDone(fullText); return }
+            } catch {}
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') onError(String(e.message))
+    }
+  })()
+  return ctrl
+}

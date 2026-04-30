@@ -1630,6 +1630,123 @@ export async function handleApi(req, res) {
     }
 
     // ── Arthas: Analyze Output Log ──
+    // ── Arthas: AI Analyze (streaming) ──
+    if (pathname === '/arthas/ai-analyze' && req.method === 'POST') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', async () => {
+        try {
+          const { content } = JSON.parse(body)
+          if (!content || !content.trim()) {
+            res.statusCode = 400; res.end(JSON.stringify({ error: 'Content required' })); return
+          }
+
+          const settings = readJsonSafe(path.join(CLAUDE_DIR, 'settings.json')) || {}
+          const env = settings.env || {}
+          const baseUrl = (env.ANTHROPIC_BASE_URL || '').replace(/\/+$/, '')
+          const apiKey = env.ANTHROPIC_AUTH_TOKEN || ''
+          const rawModel = env.ANTHROPIC_MODEL || 'deepseek-v4-pro'
+          const model = rawModel.includes('/') ? rawModel.split('/').pop() : rawModel
+          const streamUrl = baseUrl ? `${baseUrl}/v1/messages` : 'https://api.anthropic.com/v1/messages'
+
+          const systemPrompt = `You are a senior Java/JVM diagnostics expert analyzing Arthas output. Analyze the provided logs and provide a structured diagnosis in Chinese:
+
+## 诊断摘要
+Brief 2-3 sentence summary
+
+## 异常分析
+List each exception found with root cause analysis
+
+## 性能瓶颈
+Identify slow methods, high CPU consumers, bottlenecks
+
+## 线程分析
+Thread pool issues, deadlocks, blocking
+
+## 优化建议
+Specific actionable recommendations
+
+Be concise and specific. Skip obvious/generic advice. Focus on actionable findings.`
+
+          const msgs = [
+            { role: 'user', content: `请分析以下 Arthas 诊断输出:\n\n\`\`\`\n${content.slice(0, 15000)}\n\`\`\`` },
+          ]
+
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Connection', 'keep-alive')
+
+          if (!apiKey) {
+            // Fallback to claude CLI
+            const prompt = `${systemPrompt}\n\nUser: ${msgs[0].content}\n\nClaude:`
+            const result = execSync(`claude -p "${prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`, {
+              timeout: 120000, maxBuffer: 10 * 1024 * 1024, encoding: 'utf-8',
+            })
+            res.write(`data: ${JSON.stringify({ token: result.trim() })}\n\n`)
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+            res.end()
+            return
+          }
+
+          const apiBody = {
+            model,
+            max_tokens: 4096,
+            stream: true,
+            system: systemPrompt,
+            messages: msgs,
+          }
+
+          const apiRes = await fetch(`${streamUrl}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify(apiBody),
+          })
+
+          if (!apiRes.ok) {
+            const errText = await apiRes.text()
+            res.write(`data: ${JSON.stringify({ error: `API ${apiRes.status}: ${errText}` })}\n\n`)
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+            res.end()
+            return
+          }
+
+          const reader = apiRes.body?.getReader()
+          if (!reader) throw new Error('No response body')
+          const decoder = new TextDecoder()
+          let buffer = ''
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const parsed = JSON.parse(line.slice(6))
+                  if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                    res.write(`data: ${JSON.stringify({ token: parsed.delta.text })}\n\n`)
+                  }
+                } catch {}
+              }
+            }
+          }
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+          res.end()
+        } catch (e) {
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.write(`data: ${JSON.stringify({ error: String(e.message) })}\n\n`)
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+          res.end()
+        }
+      })
+      return
+    }
+
     if (pathname === '/arthas/analyze' && req.method === 'POST') {
       let body = ''
       req.on('data', chunk => body += chunk)
